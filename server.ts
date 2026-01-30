@@ -1,25 +1,46 @@
-import { WebSocketServer } from 'ws';   
-const wss = new WebSocketServer({ port: 3000 });
+import { Server } from 'socket.io';
+import { createServer } from 'http';
+import express from 'express'
 
-wss.on('connection', (ws) => {
-  console.log('Новый user подключился');
-  
-  ws.on('message', (data: Buffer | JSON) => {
-    const message = data.toString();
-    console.log(`Получено ${message}`)
+const app = express();
+const httpServer = createServer(app)
+const io = new Server(httpServer, {
+  cors: {
+    origin: '*',
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  transports: ['websocket', 'polling']
+});
 
-    wss.clients.forEach((client) => {
-      if (client.readyState === 1 && client !== ws) {
-        client.send(JSON.stringify({message, type: 'chat'}))
-      }
-    })
+io.on('connection', (socket) => {
+  console.log('User подключился', socket.id);
+
+  socket.on('message', (message: Buffer | string) => {
+    if (Buffer.isBuffer(message)) {
+      //Обработка фото и т.д
+      console.log('buffer');
+    } else {
+      console.log(`Получено ${message}`)  
+
+      socket.broadcast.emit('message', {
+        message,
+        senderId: socket.id,
+        type: 'chat',
+        time: new Date().toISOString()
+      });
+    }
   })
 
-  ws.on('error', (error) => {
-    console.error(`Error: ${error}`)
-  }) 
+  socket.on('error', error => {
+    console.error(error);
+  })
 })
 
-wss.on('error', (error) => {
-  console.error(`Error: ${error}`)
+io.on('error', error => {
+  console.error(error);
 })
+
+const PORT = 3000;
+
+httpServer.listen(PORT)

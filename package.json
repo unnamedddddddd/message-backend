@@ -1,16 +1,19 @@
 {
   "devDependencies": {
     "@types/express": "^5.0.6",
-    "@types/node": "^25.0.10",
+    "@types/node": "^25.1.0",
     "@types/ws": "^8.18.1",
     "typescript": "^5.9.3"
   },
   "name": "server",
-  "type": "module", 
+  "type": "module",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3",
     "undici-types": "^7.16.0",
     "ws": "^8.19.0"
   },
