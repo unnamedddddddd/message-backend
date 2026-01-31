@@ -1,6 +1,12 @@
 import { Server } from 'socket.io';
 import { createServer } from 'http';
 import express from 'express'
+import { Socket } from "socket.io"
+
+interface SocketProps extends Socket{
+  userName?: string;
+  currentRoom?: string| null;
+}
 
 const app = express();
 const httpServer = createServer(app)
@@ -13,19 +19,45 @@ const io = new Server(httpServer, {
   transports: ['websocket', 'polling']
 });
 
-io.on('connection', (socket) => {
+io.on('connection', (socket: SocketProps) => {
   console.log('User подключился', socket.id);
 
-  socket.on('message', (message: Buffer | string) => {
+  socket.on('join-room', (userData) => {
+    const {roomId, userName} = userData;
+
+    socket.join(roomId);
+    socket.userName = userName;
+    socket.currentRoom = roomId;
+    console.log(`Пользователь ${userName} зашел в ${roomId}`);
+
+  })
+
+   socket.on('leave-room', (userData) => {
+    const {roomId, userName} = userData;
+
+    socket.leave(roomId);
+    socket.userName = userName;
+    socket.currentRoom = null;
+
+    console.log(`Пользователь ${userName} вышел из ${roomId}`);
+  })
+
+   socket.on('disconnect', () => {
+    console.log('Пользователь отключился');
+  });
+
+  socket.on('message', (data: {message: Buffer | string, roomId: string}) => {
+    const {message, roomId} = data;
+
     if (Buffer.isBuffer(message)) {
       //Обработка фото и т.д
       console.log('buffer');
     } else {
       console.log(`Получено ${message}`)  
 
-      socket.broadcast.emit('message', {
+      socket.to(roomId).emit('message', {
         message,
-        senderId: socket.id,
+        senderId: socket.userName,
         type: 'chat',
         time: new Date().toISOString()
       });
