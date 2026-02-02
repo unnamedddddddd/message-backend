@@ -2,6 +2,8 @@ import { Server } from 'socket.io';
 import { createServer } from 'http';
 import express from 'express'
 import { Socket } from "socket.io"
+import { Pool } from 'pg';
+import cors from 'cors';
 
 interface SocketProps extends Socket{
   userName?: string;
@@ -9,6 +11,13 @@ interface SocketProps extends Socket{
 }
 
 const app = express();
+app.use(express.json())
+app.use(cors({
+  origin: '*',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+}));
+
 const httpServer = createServer(app)
 const io = new Server(httpServer, {
   cors: {
@@ -18,6 +27,45 @@ const io = new Server(httpServer, {
   },
   transports: ['websocket', 'polling']
 });
+
+
+const pool = new Pool({
+    host: 'localhost',
+    port: 5432, 
+    database: 'Message', 
+    user: 'postgres',
+    password: 'Denis48916080'     
+});
+
+pool.connect()
+  .then(() => console.log('Подключено к PostgreSQL'))
+  .catch(err => console.error('Ошибка подключения к БД:', err));
+
+app.post('/api/createUser', async (req, res) => {
+  try {
+    const {userLogin, userPassword} = req.body;
+    console.log(userLogin, userPassword);
+    
+
+    const result = await pool.query('INSERT INTO "Users"(user_login, user_password) VALUES($1,$2) RETURNING user_id', [userLogin, userPassword]);
+
+    if (result.rows.length > 0) {
+      console.log('Пользователь создан успешно', userLogin);
+      
+      res.json({
+        success: true,
+        user_id: result.rows[0].user_id,
+        message: 'Пользователь создан успешно',
+      })
+    }
+  } catch(error) {
+      console.error(error);
+      res.json({
+        succees: false,
+        message: error,
+      })
+  }
+})
 
 io.on('connection', (socket: SocketProps) => {
   console.log('User подключился', socket.id);
@@ -29,7 +77,6 @@ io.on('connection', (socket: SocketProps) => {
     socket.userName = userName;
     socket.currentRoom = roomId;
     console.log(`Пользователь ${userName} зашел в ${roomId}`);
-
   })
 
    socket.on('leave-room', (userData) => {
