@@ -2,7 +2,10 @@ import { Server, Socket } from 'socket.io';
 import { createServer } from 'http';
 import express from 'express';
 import { Pool } from 'pg';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
+import { comparePassword, hashPassword } from './scripts/hashPassword.ts';
+import { authMiddleware, generateToken, verifyToken } from './scripts/jwyTools.ts';
 
 // ИНТЕРФЕЙСЫ 
 interface ExtendedSocket extends Socket {
@@ -17,9 +20,10 @@ const app = express();
 const httpServer = createServer(app);
 
 // MIDDLEWARE 
+app.use(cookieParser());
 app.use(express.json());
 app.use(cors({
-  origin: '*',
+  origin: 'http://localhost:5173',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
@@ -32,6 +36,31 @@ const io = new Server(httpServer, {
     credentials: true
   },
   transports: ['websocket', 'polling']
+});
+
+io.use((socket: ExtendedSocket, next) => {
+  try{
+    const token: string | undefined = socket.handshake.headers.cookie;
+    
+    if (!token) {
+      console.log(`Socket ${socket.id}: нет токена авторизации`);
+      return next(new Error('Токен авторизации отсутствует'));
+    }
+
+    const decoded = verifyToken(token!);
+    next();
+  } catch (error: any) {
+    console.error(`Socket ${socket.id} auth error:`, error.message);
+    
+    if (error.name === 'TokenExpiredError') {
+      return next(new Error('Токен истек'));
+    }
+    if (error.name === 'JsonWebTokenError') {
+      return next(new Error('Неверный токен'));
+    }
+    
+    return next(new Error('Ошибка авторизации'));
+  }
 });
 
 //  БАЗА ДАННЫХ 
@@ -57,7 +86,6 @@ const handleDatabaseError = (error: any, res: any) => {
 };
 
 // API РОУТЫ 
-
 app.post('/api/createUser', async (req, res) => {
   try {
     const { userLogin, userPassword } = req.body;
@@ -74,10 +102,11 @@ app.post('/api/createUser', async (req, res) => {
         message: 'Пользователь с таким логином уже существует',
       });
     }
-
+    const hashedPassword = await hashPassword(userPassword);
+    
     const result = await pool.query(
       'INSERT INTO "Users" (user_login, user_password) VALUES ($1, $2) RETURNING user_id',
-      [userLogin, userPassword]
+      [userLogin, hashedPassword]
     );
 
     if (result.rows.length > 0) {
@@ -100,26 +129,48 @@ app.post('/api/login', async (req, res) => {
     const { userLogin, userPassword } = req.body;
 
     const userCheck = await pool.query(
-      'SELECT user_id FROM "Users" WHERE user_login = $1 AND user_password = $2',
-      [userLogin, userPassword]
+      'SELECT user_id, user_password FROM "Users" WHERE user_login = $1',
+      [userLogin]
     );
 
-    if (userCheck.rows.length > 0) {
+    if (userCheck.rows.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'Неверный логин или пароль',
+      });
+    }
+    const isPasswordCorrect = await comparePassword(userPassword, userCheck.rows[0].user_password)
+    if (isPasswordCorrect) {
+      const token = generateToken(userCheck.rows[0].user_id);
+
+      res.cookie('auth_token', token, {
+        httpOnly: true,
+        secure: false, // ПРИ ДЕПЛОЕ ПОМЕНЯТЬ НА true
+        sameSite: 'lax',// ПРИ ДЕПЛОЕ ПОМЕНЯТЬ НА strict
+        maxAge: 24 * 60 * 60 * 1000,
+        path: '/'
+      })
+
       return res.status(200).json({
         success: true,
         user_id: userCheck.rows[0].user_id,
         message: 'Вход выполнен успешно',
       });
     }
-
-    return res.status(401).json({
-      success: false,
-      message: 'Неверный логин или пароль',
-    });
-
   } catch (error) {
     handleDatabaseError(error, res);
   }
+});
+
+app.post('/api/logout', (req, res) => {
+  res.clearCookie('auth_token', {
+    path: '/',
+  });
+  
+  res.status(200).json({
+    success: true,
+    message: 'Выход выполнен успешно',
+  });
 });
 
 app.post('/api/forgotPassword', async (req, res) => {
@@ -214,6 +265,9 @@ httpServer.listen(PORT, () => {
   console.log(`WebSocket: ws://localhost:${PORT}`);
   console.log(`HTTP API: http://localhost:${PORT}`);
 });
+
+// ДОБАВИТЬ ME api для Home
+
 
 
 // ДЛЯ ТЕСТОВ
