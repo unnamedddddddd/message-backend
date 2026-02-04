@@ -71,7 +71,7 @@ export const socketHandler = (io: Server) => {
           message,
           userName: socket.userName,
           type: 'chat',
-          time: new Date().toISOString()
+          renderTime: new Date().toISOString()
         });
       }
     });
