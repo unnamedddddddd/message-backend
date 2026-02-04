@@ -46,12 +46,15 @@ export const verifyToken = (token: string): DecodedToken => {
 export const authMiddleware = (req: CustomRequest, res: Response, next: NextFunction) => {
   try {
     const token = req.cookies?.auth_token;
+    console.log(token);
+    
     if (!token) {
       return res.status(401).json({
         success: false, 
         message: 'Токен авторизации не предоставлен'
       });
     }
+    
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as DecodedToken;
 
     req.userId = decoded.userId;

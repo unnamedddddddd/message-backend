@@ -12,7 +12,7 @@ interface ExtendedSocket extends Socket {
   userName?: string;
   currentRoom?: string | null;
 }
-
+// ПОРТЫ
 const PORT = 3000;
 
 // ИНИЦИАЛИЗАЦИЯ 
@@ -40,14 +40,14 @@ const io = new Server(httpServer, {
 
 io.use((socket: ExtendedSocket, next) => {
   try{
-    const token: string | undefined = socket.handshake.headers.cookie;
+    const cookieToken: string | undefined = socket.handshake.headers.cookie;
     
-    if (!token) {
+    if (!cookieToken) {
       console.log(`Socket ${socket.id}: нет токена авторизации`);
       return next(new Error('Токен авторизации отсутствует'));
     }
-
-    const decoded = verifyToken(token!);
+    const correctToken = cookieToken.split('=')    
+    verifyToken(correctToken[1]!);
     next();
   } catch (error: any) {
     console.error(`Socket ${socket.id} auth error:`, error.message);
@@ -142,7 +142,8 @@ app.post('/api/login', async (req, res) => {
     const isPasswordCorrect = await comparePassword(userPassword, userCheck.rows[0].user_password)
     if (isPasswordCorrect) {
       const token = generateToken(userCheck.rows[0].user_id);
-
+      console.log(token);
+      
       res.cookie('auth_token', token, {
         httpOnly: true,
         secure: false, // ПРИ ДЕПЛОЕ ПОМЕНЯТЬ НА true
@@ -161,6 +162,28 @@ app.post('/api/login', async (req, res) => {
     handleDatabaseError(error, res);
   }
 });
+
+app.post('/api/me', authMiddleware, async (req, res) => {
+  try {
+  const {userId} = req.body();
+
+  const result = await pool.query('SELECT user_login FROM Users WHERE user_id = $1', [userId]);
+  if (result.rows.length === 0) {
+    return res.status(404).json({
+      success: false,
+      message: 'Пользователь не найден',
+    });
+  }
+
+  return res.status(200).json({
+    success: true,
+    userLogin: result.rows[0].user_login,
+  })
+  } catch (error) {
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+})
 
 app.post('/api/logout', (req, res) => {
   res.clearCookie('auth_token', {
@@ -206,7 +229,6 @@ app.post('/api/forgotPassword', async (req, res) => {
 });
 
 //  SOCKET.IO СОБЫТИЯ
-
 io.on('connection', (socket: ExtendedSocket) => {
   console.log(`Подключился пользователь: ${socket.id}`);
 
@@ -265,10 +287,6 @@ httpServer.listen(PORT, () => {
   console.log(`WebSocket: ws://localhost:${PORT}`);
   console.log(`HTTP API: http://localhost:${PORT}`);
 });
-
-// ДОБАВИТЬ ME api для Home
-
-
 
 // ДЛЯ ТЕСТОВ
 export { app, io, pool };
