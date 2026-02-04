@@ -46,7 +46,6 @@ export const verifyToken = (token: string): DecodedToken => {
 export const authMiddleware = (req: CustomRequest, res: Response, next: NextFunction) => {
   try {
     const token = req.cookies?.auth_token;
-    console.log(token);
     
     if (!token) {
       return res.status(401).json({
@@ -55,7 +54,7 @@ export const authMiddleware = (req: CustomRequest, res: Response, next: NextFunc
       });
     }
     
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as DecodedToken;
+    const decoded = jwt.verify(token, JWT_SECRET) as DecodedToken;
 
     req.userId = decoded.userId;
     next();
