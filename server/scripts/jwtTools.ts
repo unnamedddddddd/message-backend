@@ -88,4 +88,48 @@ export const authMiddleware = (req: CustomRequest, res: Response, next: NextFunc
   }
 }
 
+export const authRememberMiddleware = (req: CustomRequest, res: Response, next: NextFunction) => {
+  try {
+    const tokenRemember = req.cookies?.remember_token;
+    
+    if (!tokenRemember) {
+      return res.status(401).json({
+        success: false, 
+        message: 'Токен авторизации не предоставлен'
+      });
+    }
+    
+    const decoded = jwt.verify(tokenRemember, JWT_SECRET_REMEMBER) as DecodedToken;
+
+    req.userId = decoded.userId;
+    next();
+  } catch (error: unknown)  {
+      if (isJWTError(error)) {
+        if (error.name === 'TokenExpiredError') {
+          console.error('Ошибка authRememberMiddleware:', error);
+          res.clearCookie('auth_token');
+          res.status(401).json({
+            success: false, 
+            message: `Токен истёк ${error.expiredAt ? error.expiredAt.toLocaleString() : ''}`
+          });
+          return;
+      }
+      if (error.name === 'JsonWebTokenError') {
+        console.error('Ошибка authRememberMiddleware:', error);
+        res.clearCookie('auth_token');
+        res.status(403).json({
+          success: false,
+          message: `Недействительный токен: ${error.message}`
+        });
+        return;
+      }
+    }
+  
+    console.error('Ошибка authRememberMiddleware:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Внутренняя ошибка сервера',
+    });
+  }
+}
 

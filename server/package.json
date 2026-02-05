@@ -11,7 +11,6 @@
     "typescript": "^5.9.3"
   },
   "name": "server",
-  "type": "module",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",

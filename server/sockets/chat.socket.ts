@@ -1,10 +1,44 @@
 import { Server, Socket } from "socket.io";
-import { verifyToken } from "../scripts/jwyTools.ts";
+import { verifyToken } from "../scripts/jwtTools.ts";
+import { pool } from "../dbCongif.ts";
+import { error } from "node:console";
 
 // ИНТЕРФЕЙС
 interface ExtendedSocket extends Socket {
+  userId: number | string;
   userName?: string;
   currentRoom?: string | null;
+}
+
+// Подключение к БД
+pool.connect()
+  .then(() => console.log('Подключено к PostgreSQL'))
+  .catch(err => console.error('Ошибка подключения к БД:', err));
+
+// const saveMessages = async (message: string | Buffer, userId: string| number, chatId: number | string, userLogin: string, time: Date) => {
+//   try {
+//     const checkChat = await pool.query(
+//     'SELECT chat_id FROM "Messages" WHERE chat_id = $1',
+//     [chatId]
+//     )
+
+//     if (checkChat.rows.length === 0) {
+//       throw ("Чат не найден");
+//     }
+
+//     await pool.query(
+//       'INSERT INTO "Messages" (chat_id, user_id, message_text, message_type, created_at) VALUES ($1, $2) RETURNING user_id',
+//       [chatId, userId, message, 'text', time]
+//     );
+
+//   } catch (error) {
+//     console.error(error);
+//   }
+// } 
+
+const getCookie = (cookieHeader: string, name: string): string | undefined  => {
+  const match = cookieHeader.match(new RegExp(`(^| )${name}=([^;]+)`));
+  return match ? match[2] : undefined;
 }
 
 export const socketHandler = (io: Server) => {
@@ -13,13 +47,18 @@ export const socketHandler = (io: Server) => {
     const socket = socketAny as ExtendedSocket; 
     try {
       const cookieToken: string | undefined = socket.handshake.headers.cookie;
-      
+
       if (!cookieToken) {
         console.log(`Socket ${socket.id}: нет токена авторизации`);
         return next(new Error('Токен авторизации отсутствует'));
       }
-      const correctToken = cookieToken.split('=');    
-      verifyToken(correctToken[1]!);
+      const correctToken = getCookie(cookieToken, 'auth_token')
+      if (!correctToken) {
+        throw ('cookie не найдена');
+      }
+      const decoded = verifyToken(correctToken);
+      socket.userId = decoded.userId;
+
       next();
     } catch (error: any) {
       console.error(`Socket ${socket.id} auth error:`, error.message);
@@ -74,6 +113,7 @@ export const socketHandler = (io: Server) => {
           renderTime: new Date().toISOString()
         });
       }
+      // saveMessages(message, socket.userId,  );
     });
 
     socket.on('error', (error) => {
