@@ -256,7 +256,7 @@ router.get('/api/:chatId/messages', authMiddleware, async (req, res) => {
   }
 });
 
-router.get('api/servers/:serverId/chats',authMiddleware, async (req: CustomRequest, res) => {
+router.get('/api/servers/:serverId/chats',authMiddleware, async (req: CustomRequest, res) => {
   try {
     const { serverId } = req.params;
 
