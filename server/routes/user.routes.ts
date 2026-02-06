@@ -256,10 +256,34 @@ router.get('/api/:chatId/messages', authMiddleware, async (req, res) => {
   }
 });
 
+router.get('/api/servers/',authMiddleware, async (req: CustomRequest, res) => {
+  try {
+    const servers = await pool.query(
+      'SELECT server_id, server_name FROM "Servers"'
+    )
+
+    if (servers.rows.length === 0) {
+        return res.status(404).json({
+        success: false,
+        message: 'Сервер не найден',
+      });
+    }
+    console.log(servers.rows);
+    
+    res.json({
+      success: true,
+      servers: servers.rows
+    })
+  } catch (error) { 
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+});
+
 router.get('/api/servers/:serverId/chats',authMiddleware, async (req: CustomRequest, res) => {
   try {
     const { serverId } = req.params;
-
+    
     const chatsServer = await pool.query(
       'SELECT chat_id, chat_name FROM "Chats" WHERE server_id = $1',
       [serverId]
@@ -271,10 +295,11 @@ router.get('/api/servers/:serverId/chats',authMiddleware, async (req: CustomRequ
         message: 'Сервер не найден',
       });
     }
-
+    console.log(chatsServer.rows);
+    
     res.json({
       success: true,
-      messages: chatsServer.rows
+      chats: chatsServer.rows
     })
   } catch (error) {
     console.error(error);

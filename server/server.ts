@@ -2,9 +2,9 @@ import { Server } from 'socket.io';
 import { createServer } from 'http';
 import express from 'express';
 import cookieParser from 'cookie-parser';
-import cors from 'cors';
 import userRoutes from './routes/user.routes.ts'; 
 import { socketHandler } from './sockets/chat.socket.ts';
+import cors from './corsConfig.ts';
 
 const PORT = 3000;
 const app = express();
