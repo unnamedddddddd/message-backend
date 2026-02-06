@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { comparePassword, hashPassword } from '../scripts/hashPassword.ts';
 import { authMiddleware, authRememberMiddleware, generateToken, generateTokenRemember } from '../scripts/jwtTools.ts';
-import { pool } from '../dbCongif.ts';
+import { pool } from '../config/db.config.ts';
 import { CustomRequest } from '../Interfaces/CustomRequest.ts';
+import { upload } from '../config/multer.config';
 
 const router = Router(); 
 
@@ -230,45 +231,19 @@ router.post('/api/forgotPassword', async (req, res) => {
   }
 });
 
-router.get('/api/:chatId/messages', authMiddleware, async (req, res) => {
-  try {
-    const { chatId } = req.params;
-
-    const messagesChat = await pool.query(
-      'SELECT user_id, message_text, created_at FROM "Messages" WHERE chat_id = $1 ORDER BY created_at DESC',
-      [chatId]
-    );
-
-    if (messagesChat.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Чат не найден',
-      });
-    }
-
-    res.json({
-      success: true,
-      messages: messagesChat.rows
-    })
-  } catch (error) {
-    console.error(error);
-    handleDatabaseError(error, res);
-  }
-});
-
 router.get('/api/servers/',authMiddleware, async (req: CustomRequest, res) => {
   try {
     const servers = await pool.query(
-      'SELECT server_id, server_name FROM "Servers"'
+      'SELECT server_id, server_name, server_avatar FROM "Servers"'
     )
-
+    console.log(servers.rows);
+    
     if (servers.rows.length === 0) {
         return res.status(404).json({
         success: false,
         message: 'Сервер не найден',
       });
     }
-    console.log(servers.rows);
     
     res.json({
       success: true,
@@ -280,7 +255,7 @@ router.get('/api/servers/',authMiddleware, async (req: CustomRequest, res) => {
   }
 });
 
-router.get('/api/servers/:serverId/chats',authMiddleware, async (req: CustomRequest, res) => {
+router.get('/api/servers/:serverId/chats', authMiddleware, async (req: CustomRequest, res) => {
   try {
     const { serverId } = req.params;
     
@@ -295,7 +270,6 @@ router.get('/api/servers/:serverId/chats',authMiddleware, async (req: CustomRequ
         message: 'Сервер не найден',
       });
     }
-    console.log(chatsServer.rows);
     
     res.json({
       success: true,
@@ -306,5 +280,42 @@ router.get('/api/servers/:serverId/chats',authMiddleware, async (req: CustomRequ
     handleDatabaseError(error, res);
   }
 });
+
+router.get('/api/chats/:chatId/messages', async (req, res) => {
+   try {
+    const {chatId} = req.params;
+    
+    const messagesChat = await pool.query(
+      `SELECT 
+        m.user_id, 
+        u.user_login, 
+        m.message_text, 
+        m.created_at 
+      FROM "Messages" m
+      JOIN "Users" u ON m.user_id = u.user_id
+      WHERE m.chat_id = $1 
+      ORDER BY m.created_at DESC
+      `,
+      [chatId]
+    );
+  
+    if (messagesChat.rows.length === 0) {
+        return res.status(404).json({
+        success: false,
+        message: 'Чат не найден',
+      });
+    }
+    
+    res.json({
+      success: true,
+      messages: messagesChat.rows
+    })
+  
+    } catch (error) {
+    console.error(error);
+    handleDatabaseError(error, res);
+    }
+})
+
 
 export default router; 
