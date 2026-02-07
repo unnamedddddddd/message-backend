@@ -1,6 +1,6 @@
 import { Server, Socket } from "socket.io";
 import { verifyToken } from "../scripts/jwtTools.ts";
-import { pool } from "../config/db.config.ts";
+import { pool } from "../configs/db.config.ts";
 import { error } from "node:console";
 import SaveMessage from "../Interfaces/SaveMessageProps.ts";
 

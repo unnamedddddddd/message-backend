@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { comparePassword, hashPassword } from '../scripts/hashPassword.ts';
 import { authMiddleware, authRememberMiddleware, generateToken, generateTokenRemember } from '../scripts/jwtTools.ts';
-import { pool } from '../config/db.config.ts';
+import { pool } from '../configs/db.config.ts';
 import { CustomRequest } from '../Interfaces/CustomRequest.ts';
-import { upload } from '../config/multer.config';
+import { upload } from '../configs/multer.config.ts';
 
 const router = Router(); 
 

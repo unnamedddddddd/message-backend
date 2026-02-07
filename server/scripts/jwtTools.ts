@@ -15,7 +15,7 @@ export const generateToken = (userId: number) => {
     {expiresIn: '24h'}
   )
 }
-// ГЕНЕРАЦИЯ ТОКЕНА ДЛЯ ЗАПОМНИТЬ ПОЛЬЗОВАТЕЛЯ (ПОТОМ ТОЖЕ ЧЕРЕЗ cookies)
+// ГЕНЕРАЦИЯ ТОКЕНА ДЛЯ ЗАПОМНИТЬ ПОЛЬЗОВАТЕЛЯ
 export const generateTokenRemember = (userId: number) => {
  return jwt.sign(
     {userId},

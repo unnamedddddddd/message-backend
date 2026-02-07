@@ -4,7 +4,7 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import userRoutes from './routes/user.routes.ts'; 
 import { socketHandler } from './sockets/chat.socket.ts';
-import { corsExpress, corsOptions } from './config/cors.config.ts';
+import { corsExpress, corsOptions } from './configs/cors.config.ts';
 
 const PORT = 3000;
 const app = express();
