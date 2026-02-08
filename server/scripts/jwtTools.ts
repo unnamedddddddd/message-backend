@@ -1,8 +1,8 @@
 import jwt from 'jsonwebtoken';
 import type { Response, NextFunction } from 'express';
-import type { CustomRequest } from '../Interfaces/CustomRequest.ts';
-import type { JWTError } from '../Interfaces/jwtError.ts';
-import type { DecodedToken } from '../Interfaces/DecodedToken.ts';
+import type { CustomRequest } from '../types/CustomRequest.ts';
+import type { JWTError } from '../types/jwtError.ts';
+import type { DecodedToken } from '../types/DecodedToken.ts';
 
 const JWT_SECRET ='lrIHwRP@9#WYzj2_ejYZHFcHNX_uD+JW'; // СДЕЛАТЬ proccess.env ПРИ ДЕПЛОЕ
 const JWT_SECRET_REMEMBER ='lrFHwRP@)xfgn(b3_ejYFFFcsfW_gf+ghh'; // СДЕЛАТЬ proccess.env ПРИ ДЕПЛОЕ

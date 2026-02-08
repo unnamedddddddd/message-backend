@@ -2,7 +2,7 @@ import { Server, Socket } from "socket.io";
 import { verifyToken } from "../scripts/jwtTools.ts";
 import { pool } from "../configs/db.config.ts";
 import { error } from "node:console";
-import SaveMessage from "../Interfaces/SaveMessageProps.ts";
+import SaveMessage from "../types/SaveMessageProps.ts";
 
 // ИНТЕРФЕЙС
 interface ExtendedSocket extends Socket {

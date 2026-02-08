@@ -2,8 +2,11 @@ import { Router } from 'express';
 import { comparePassword, hashPassword } from '../scripts/hashPassword.ts';
 import { authMiddleware, authRememberMiddleware, generateToken, generateTokenRemember } from '../scripts/jwtTools.ts';
 import { pool } from '../configs/db.config.ts';
-import { CustomRequest } from '../Interfaces/CustomRequest.ts';
+import { CustomRequest } from '../types/CustomRequest.ts';
 import { upload } from '../configs/multer.config.ts';
+import fs from 'fs';
+import DEFAULT_USER_AVATAR from '../configs/userAvatar.ts';
+import { sendVerificationEmail } from '../configs/mailer.config.ts';
 
 const router = Router(); 
 
@@ -98,8 +101,6 @@ router.post('/api/login', async (req, res) => {
         path: '/'
       })
       
-      
-
       return res.status(200).json({
         success: true,
         user_id: userCheck.rows[0].user_id,
@@ -167,8 +168,9 @@ router.post('/api/me', authMiddleware, async (req, res) => {
   const {userId} = req.body;
 
   const result = await pool.query(
-    'SELECT user_login FROM "Users" WHERE user_id = $1', 
-  [userId]);
+    'SELECT user_login, user_avatar, user_email FROM "Users" WHERE user_id = $1', 
+    [userId]
+  );
 
   if (result.rows.length === 0) {
     return res.status(404).json({
@@ -179,8 +181,10 @@ router.post('/api/me', authMiddleware, async (req, res) => {
 
   return res.status(200).json({
     success: true,
-    userLogin: result.rows[0].user_login,
-  })
+    user_login: result.rows[0].user_login,
+    user_avatar: result.rows[0].user_avatar,
+    user_email: result.rows[0].user_email,
+  })  
   } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
@@ -294,8 +298,7 @@ router.get('/api/chats/:chatId/messages', async (req, res) => {
       FROM "Messages" m
       JOIN "Users" u ON m.user_id = u.user_id
       WHERE m.chat_id = $1 
-      ORDER BY m.created_at DESC
-      `,
+      ORDER BY m.created_at DESC`,
       [chatId]
     );
   
@@ -316,6 +319,134 @@ router.get('/api/chats/:chatId/messages', async (req, res) => {
     handleDatabaseError(error, res);
     }
 })
+
+router.post('/api/users/:userId/avatar', authMiddleware, upload.single('avatar'), async (req: CustomRequest, res) => {
+   try {
+    if (!req.file) return res.status(400).json({ error: 'Файл не пришел' });
+    const userId = req.userId;
+
+    const prevAvatarPath = await pool.query(
+      'SELECT user_avatar FROM "Users" WHERE user_id = $1',
+      [userId]
+    );
+    if (prevAvatarPath.rows[0].user_avatar !== 0 && prevAvatarPath.rows[0].user_avatar !== DEFAULT_USER_AVATAR) {
+      fs.rmSync(`./${prevAvatarPath.rows[0].user_avatar}`);
+    }
+
+    const pathAvatar = `/uploads/UsersAvatars/${req.file.filename}`;
+
+    await pool.query(
+      'UPDATE "Users" SET user_avatar = $1 WHERE user_id = $2',
+      [pathAvatar, userId]
+    )
+   res.json({ success: true, avatar: pathAvatar });
+  } catch (error) {
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+})
+
+router.post('/api/users/:userId/confirmEmail', authMiddleware, async (req: CustomRequest, res) => {
+  try {
+    const userId = req.userId;
+    const { userEmail } = req.body;
+
+    const result = await pool.query(
+      'SELECT user_login, user_avatar FROM "Users" WHERE user_id = $1', 
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Пользователь не найден',
+      });
+    }
+
+    await pool.query('DELETE FROM "VerificationCode" WHERE user_id = $1', [userId]);
+
+    const verifyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    
+    await pool.query(
+      'INSERT INTO "VerificationCode" (code_text, user_id) VALUES ($1, $2)',
+      [verifyCode, userId]
+    );
+
+    await pool.query(
+      'UPDATE "Users" SET user_email = $1 WHERE user_id = $2',
+      [userEmail, userId]
+    );
+
+    sendVerificationEmail(userEmail, verifyCode);
+
+    res.json({ 
+      userEmail,
+      success: true,  
+      message: 'Код потверждения отправлен',
+    });
+  } catch (error) {
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+});  
+
+router.post('/api/users/:userId/confirmCode', authMiddleware, async (req: CustomRequest, res) => {
+  try {
+    const userId = req.userId;
+    const { userCode } = req.body;
+    
+    const result = await pool.query(
+      'SELECT user_login, user_avatar FROM "Users" WHERE user_id = $1', 
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Пользователь не найден',
+      });
+    }
+  
+    const checkCode = await pool.query(
+      'SELECT code_text FROM "VerificationCode" WHERE user_id = $1', 
+      [userId]
+    );
+
+  
+    if (checkCode.rows[0].code_text !== userCode) {
+      return res.json({ 
+      success: false,  
+      message: 'Код потверждения не корректный',
+    });
+    }
+
+    await pool.query(
+      'UPDATE "Users" SET is_verified = true WHERE user_id = $1',
+      [userId]
+    )
+
+    await pool.query('DELETE FROM "VerificationCode" WHERE user_id = $1', [userId]);    
+
+    return res.json({ 
+      success: true,  
+      message: 'Почта потверждена',
+    });
+  } catch (error) {
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
 
 
 export default router; 
