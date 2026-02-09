@@ -168,7 +168,7 @@ router.post('/api/me', authMiddleware, async (req, res) => {
   const {userId} = req.body;
 
   const result = await pool.query(
-    'SELECT user_login, user_avatar, user_email FROM "Users" WHERE user_id = $1', 
+    'SELECT user_login, user_avatar, user_email, is_verified FROM "Users" WHERE user_id = $1', 
     [userId]
   );
 
@@ -184,6 +184,7 @@ router.post('/api/me', authMiddleware, async (req, res) => {
     user_login: result.rows[0].user_login,
     user_avatar: result.rows[0].user_avatar,
     user_email: result.rows[0].user_email,
+    is_verified: result.rows[0].is_verified,
   })  
   } catch (error) {
     console.error(error);
@@ -240,8 +241,7 @@ router.get('/api/servers/',authMiddleware, async (req: CustomRequest, res) => {
     const servers = await pool.query(
       'SELECT server_id, server_name, server_avatar FROM "Servers"'
     )
-    console.log(servers.rows);
-    
+        
     if (servers.rows.length === 0) {
         return res.status(404).json({
         success: false,
@@ -293,6 +293,7 @@ router.get('/api/chats/:chatId/messages', async (req, res) => {
       `SELECT 
         m.user_id, 
         u.user_login, 
+        u.user_avatar, 
         m.message_text, 
         m.created_at 
       FROM "Messages" m
@@ -351,15 +352,27 @@ router.post('/api/users/:userId/confirmEmail', authMiddleware, async (req: Custo
     const userId = req.userId;
     const { userEmail } = req.body;
 
-    const result = await pool.query(
-      'SELECT user_login, user_avatar FROM "Users" WHERE user_id = $1', 
+    const checkUser = await pool.query(
+      'SELECT user_login FROM "Users" WHERE user_id = $1', 
       [userId]
     );
 
-    if (result.rows.length === 0) {
+    if (checkUser.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Пользователь не найден',
+      });
+    }
+
+    const checkEmail = await pool.query(
+      'SELECT user_id FROM "Users" WHERE user_email = $1', 
+      [userEmail]
+    );
+
+    if (checkEmail.rows.length !== 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Эта почта привязана к другому аккаунту',
       });
     }
 
