@@ -3,7 +3,7 @@ import { comparePassword, hashPassword } from '../scripts/hashPassword.ts';
 import { authMiddleware, authRememberMiddleware, generateToken, generateTokenRemember } from '../scripts/jwtTools.ts';
 import { pool } from '../configs/db.config.ts';
 import { CustomRequest } from '../types/CustomRequest.ts';
-import { upload } from '../configs/multer.config.ts';
+import { uploadServer, uploadUser } from '../configs/multer.config.ts';
 import fs from 'fs';
 import DEFAULT_USER_AVATAR from '../configs/userAvatar.ts';
 import { sendVerificationEmail } from '../configs/mailer.config.ts';
@@ -321,7 +321,7 @@ router.get('/api/chats/:chatId/messages', async (req, res) => {
     }
 })
 
-router.post('/api/users/:userId/avatar', authMiddleware, upload.single('avatar'), async (req: CustomRequest, res) => {
+router.post('/api/users/:userId/avatar', authMiddleware, uploadUser.single('avatar'), async (req: CustomRequest, res) => {
    try {
     if (!req.file) return res.status(400).json({ error: 'Файл не пришел' });
     const userId = req.userId;
@@ -451,7 +451,29 @@ router.post('/api/users/:userId/confirmCode', authMiddleware, async (req: Custom
 });
 
 
+router.post('/api/servers/createServer/:serverName', uploadServer.single('avatar'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Файл не пришел' });
+    const { serverName } = req.params
 
+    const pathAvatar = `/uploads/ServersAvatars/${req.file.filename}`;
+    console.log(req.file.filename);
+    
+    
+    await pool.query(
+      'INSERT INTO "Servers" (server_name, server_avatar) VALUES($1, $2)',
+      [serverName, pathAvatar]
+    )
+  
+    res.json({ 
+      success: true, 
+      message: 'Сервер успешно создан'
+    });
+  } catch (error) {
+    console.error(error);
+    handleDatabaseError(error, res);
+  }  
+})
 
 
 

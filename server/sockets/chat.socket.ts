@@ -20,7 +20,7 @@ const saveMessages = async ({message, userId, chatName}: SaveMessage) => {
   try {
    await pool.query(
     `INSERT INTO "Messages" (chat_id, user_id, message_text) 
-    VALUES (
+      VALUES (
       (SELECT chat_id FROM "Chats" WHERE chat_name = $1 LIMIT 1), 
       $2, 
       $3
