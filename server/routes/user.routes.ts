@@ -264,7 +264,7 @@ router.get('/api/servers/:serverId/chats', authMiddleware, async (req: CustomReq
     const { serverId } = req.params;
     
     const chatsServer = await pool.query(
-      'SELECT chat_id, chat_name FROM "Chats" WHERE server_id = $1',
+      'SELECT chat_id, chat_name, chat_type FROM "Chats" WHERE server_id = $1',
       [serverId]
     )
 
@@ -475,7 +475,26 @@ router.post('/api/servers/createServer/:serverName', uploadServer.single('avatar
   }  
 })
 
-
+router.post('/api/servers/:serverId/chats/:chatName', authMiddleware, async (req, res) => {
+  try {
+    const { chatType } = req.body;
+    const { serverId, chatName } = req.params;
+    console.log(chatType, serverId, chatName);
+    
+    await pool.query(
+      'INSERT INTO "Chats" (chat_name, chat_type, server_id) VALUES($1, $2, $3)',
+      [chatName, chatType, serverId]
+    )
+  
+    res.json({ 
+      success: true, 
+      message: 'Чат успешно создан'
+    });
+  } catch (error) {
+    console.error(error);
+    handleDatabaseError(error, res);
+  }  
+})
 
 
 

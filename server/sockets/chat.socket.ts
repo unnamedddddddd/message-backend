@@ -39,6 +39,24 @@ const getCookie = (cookieHeader: string, name: string): string | undefined  => {
   return match ? match[2] : undefined;
 }
 
+  const getUserAvatar = async (userName: string | undefined): Promise<string | null> => {
+    try {
+      const result = await pool.query(
+        'SELECT user_avatar FROM "Users" WHERE user_login = $1',
+        [userName]
+      );
+      
+      if (result.rows.length === 0) {
+        return null;
+      }
+      
+      return result.rows[0].user_avatar;
+    } catch (error) {
+      console.error('Ошибка получения аватара:', error);
+      return null;
+    }
+  }
+
 export const socketHandler = (io: Server) => {
   // ПРОМЕЖУТОЧНАЯ ПРОВЕРКА ТОКЕНА
   io.use((socketAny: any, next) => {
@@ -96,22 +114,70 @@ export const socketHandler = (io: Server) => {
       console.log(`[${new Date().toLocaleString()}] ${userName} вышел из комнаты: ${roomId}`);
     });
 
-    socket.on('message', (data: { message: Buffer | string; roomId: string, }) => {
+    socket.on('message', async (data) => {
       const { message, roomId } = data;
 
       if (Buffer.isBuffer(message)) {
         console.log('Получено бинарное сообщение');
-      } else {
-        console.log(`[${new Date().toLocaleString()}] Сообщение от ${socket.userName}: ${message}`);
+        return;
+      }
+      const avatar = await getUserAvatar(socket.userName);
+      socket.to(roomId).emit('message', {
+        message,
+        userName: socket.userName,
+        userAvatar: avatar,
+        type: 'chat',
+        renderTime: new Date().toISOString()
+      });
 
-        socket.to(roomId).emit('message', {
-          message,
+      saveMessages({ message, userId: Number(socket.userId), chatName: roomId });
+    });
+
+    socket.on('user-join-voice', ({roomId}) => {
+      console.log(socket.userId);
+
+      socket.join(roomId);
+      console.log(`[${new Date().toLocaleString()}] ${socket.userName} вошёл в комнату: ${roomId}`);
+    });
+
+    socket.on('user-left-voice', ({roomId}) => {
+      console.log(socket.userId);
+
+      socket.leave(roomId);
+      console.log(`[${new Date().toLocaleString()}] ${socket.userName} вышел из комнаты: ${roomId}`);
+    });
+
+    socket.on('voice-signal', (data) => {
+      const { signal, roomId, to } = data;
+      
+      if (to) {
+        socket.to(to).emit('voice-signal', {
+          signal,
+          from: socket.id,
           userName: socket.userName,
-          type: 'chat',
-          renderTime: new Date().toISOString()
+        });
+      } else {
+        socket.to(roomId).emit('voice-signal', {
+          signal,
+          userName: socket.userName,
         });
       }
-      saveMessages({message, userId: Number(socket.userId), chatName: roomId});
+    })
+
+    socket.on('voice-chat-participants', (data) => {
+      const { roomId } = data;
+      const room = io.sockets.adapter.rooms.get(roomId);
+      const participants = room ? Array.from(room).map((socketId) => {
+        const clientSocket = io.sockets.sockets.get(socketId) as ExtendedSocket;
+        return {
+          socketId,
+          userId: clientSocket?.userId,
+          userName: clientSocket?.userName,
+        }
+      }) : []; 
+      console.log(participants);
+      
+      socket.emit('voice-chat-participants', participants);
     });
 
     socket.on('error', (error) => {
