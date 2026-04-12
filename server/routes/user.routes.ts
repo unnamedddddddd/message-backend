@@ -299,10 +299,11 @@ router.get('/api/chats/:chatId/messages', async (req, res) => {
       FROM "Messages" m
       JOIN "Users" u ON m.user_id = u.user_id
       WHERE m.chat_id = $1 
-      ORDER BY m.created_at DESC`,
+      ORDER BY m.created_at ASC`,
       [chatId]
     );
-  
+    console.log(messagesChat.rows);
+    
     if (messagesChat.rows.length === 0) {
         return res.status(404).json({
         success: false,
@@ -496,11 +497,38 @@ router.post('/api/servers/:serverId/chats/:chatName', authMiddleware, async (req
   }  
 })
 
-
-
-
-
-
-
+router.get('/api/me/friends', authMiddleware, async (req: CustomRequest, res) => {
+  try {
+    const userId = req.userId
+    const friends = await pool.query(
+        `SELECT 
+        f.id,
+        f.friend_id,
+        u.user_login, 
+        u.user_avatar, 
+        f.created_at 
+      FROM "Friends" f
+      JOIN "Users" u ON f.friend_id = u.user_id
+      WHERE f.user_id = $1 
+      ORDER BY f.created_at DESC`,
+      [userId]
+    )
+    
+    if (friends.rows.length === 0) {
+        return res.status(404).json({
+        success: false,
+        message: 'Сервер не найден',
+      });
+    }
+    
+    res.json({
+      success: true,
+      friends: friends.rows
+    })
+  } catch (error) { 
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+});
 
 export default router; 

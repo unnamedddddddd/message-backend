@@ -16,17 +16,19 @@ pool.connect()
   .then(() => console.log('Подключено к PostgreSQL'))
   .catch(err => console.error('Ошибка подключения к БД:', err));
 
-const saveMessages = async ({message, userId, chatName}: SaveMessage) => {
+const saveMessages = async ({message, userId, chatId}: SaveMessage) => {
+  console.log(message, chatId, userId);
+  
   try {
    await pool.query(
     `INSERT INTO "Messages" (chat_id, user_id, message_text) 
       VALUES (
-      (SELECT chat_id FROM "Chats" WHERE chat_name = $1 LIMIT 1), 
+      $1,
       $2, 
       $3
     ) 
     RETURNING message_id`,
-    [chatName, userId, message]
+    [chatId, userId, message]
    );
 
   } catch (error) {
@@ -97,7 +99,8 @@ export const socketHandler = (io: Server) => {
 
     socket.on('join-room', (userData: { roomId: string; userName: string }) => {
       const { roomId, userName } = userData;
-
+      console.log(userData);
+      
       socket.join(roomId);
       socket.userName = userName;
       socket.currentRoom = roomId;
@@ -107,6 +110,7 @@ export const socketHandler = (io: Server) => {
 
     socket.on('leave-room', (userData: { roomId: string; userName: string }) => {
       const { roomId, userName } = userData;
+      console.log(userData);
 
       socket.leave(roomId);
       socket.currentRoom = null;
@@ -130,7 +134,7 @@ export const socketHandler = (io: Server) => {
         renderTime: new Date().toISOString()
       });
 
-      saveMessages({ message, userId: Number(socket.userId), chatName: roomId });
+      saveMessages({ message, userId: Number(socket.userId), chatId: roomId });
     });
 
     socket.on('user-join-voice', ({roomId}) => {
