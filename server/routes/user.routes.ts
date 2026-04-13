@@ -285,9 +285,16 @@ router.get('/api/servers/:serverId/chats', authMiddleware, async (req: CustomReq
   }
 });
 
-router.get('/api/chats/:chatId/messages', async (req, res) => {
-   try {
-    const {chatId} = req.params;
+router.get('/api/chats/:chatType/:chatId/messages', async (req, res) => {
+  try {
+    const { chatType, chatId } = req.params;
+    
+    if (chatType !== 'server' && chatType !== 'personal') {
+      return res.status(400).json({
+        success: false,
+        message: 'Некорректный тип чата. Используйте "server" или "personal"'
+      });
+    }
     
     const messagesChat = await pool.query(
       `SELECT 
@@ -298,29 +305,22 @@ router.get('/api/chats/:chatId/messages', async (req, res) => {
         m.created_at 
       FROM "Messages" m
       JOIN "Users" u ON m.user_id = u.user_id
-      WHERE m.chat_id = $1 
+      WHERE m.chat_id = $1 AND m.chat_type = $2
       ORDER BY m.created_at ASC`,
-      [chatId]
+      [chatId, chatType]
     );
-    console.log(messagesChat.rows);
-    
-    if (messagesChat.rows.length === 0) {
-        return res.status(404).json({
-        success: false,
-        message: 'Чат не найден',
-      });
-    }
     
     res.json({
       success: true,
-      messages: messagesChat.rows
-    })
+      messages: messagesChat.rows,
+      count: messagesChat.rows.length
+    });
   
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
-    }
-})
+  }
+});
 
 router.post('/api/users/:userId/avatar', authMiddleware, uploadUser.single('avatar'), async (req: CustomRequest, res) => {
    try {
@@ -517,7 +517,7 @@ router.get('/api/me/friends', authMiddleware, async (req: CustomRequest, res) =>
     if (friends.rows.length === 0) {
         return res.status(404).json({
         success: false,
-        message: 'Сервер не найден',
+        message: 'Друг не найден',
       });
     }
     
@@ -530,5 +530,38 @@ router.get('/api/me/friends', authMiddleware, async (req: CustomRequest, res) =>
     handleDatabaseError(error, res);
   }
 });
+
+router.post('/api/chats/personal-chats', authMiddleware, async (req: CustomRequest, res) => {
+  try {
+    const { friendId } = req.body;
+    const userId = req.userId
+
+    const user1 = Math.min(Number(userId), Number(friendId));
+    const user2 = Math.max(Number(userId), Number(friendId));
+
+    let personalChat = await pool.query(
+      'SELECT personal_chat_id  FROM "PersonalChats" WHERE user_id_first = $1 AND user_id_second = $2', 
+      [user1, user2]
+    );
+
+    let chatId;
+     if (personalChat.rows.length === 0) {
+      personalChat = await pool.query(
+        `INSERT INTO "PersonalChats" (user_id_first, user_id_second) 
+        VALUES ($1, $2) 
+        RETURNING personal_chat_id`,
+        [user1, user2]
+      );
+      chatId = personalChat.rows[0].personal_chat_id;
+    } else {
+      chatId = personalChat.rows[0].personal_chat_id;
+    }
+
+  res.json({ chatId, success: true });
+  } catch (error) {
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+})
 
 export default router; 

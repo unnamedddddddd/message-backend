@@ -1,8 +1,8 @@
 import { Server, Socket } from "socket.io";
 import { verifyToken } from "../scripts/jwtTools.ts";
 import { pool } from "../configs/db.config.ts";
-import { error } from "node:console";
 import SaveMessage from "../types/SaveMessageProps.ts";
+import { redis } from "../configs/redis.config.ts";
 
 // ИНТЕРФЕЙС
 interface ExtendedSocket extends Socket {
@@ -15,6 +15,14 @@ interface ExtendedSocket extends Socket {
 pool.connect()
   .then(() => console.log('Подключено к PostgreSQL'))
   .catch(err => console.error('Ошибка подключения к БД:', err));
+
+redis.on('connect', () => {
+  console.log('Подключено к Redis');
+})
+
+redis.on('error', (error: Error) => {
+  console.error('❌ Ошибка Redis:', error);
+});
 
 const saveMessages = async ({message, userId, chatId}: SaveMessage) => {
   console.log(message, chatId, userId);
@@ -93,104 +101,146 @@ export const socketHandler = (io: Server) => {
   });
 
   //  SOCKET.IO СОБЫТИЯ
-  io.on('connection', (socketAny: any) => {
-    const socket = socketAny as ExtendedSocket; 
-    console.log(`[${new Date().toLocaleString()}] Подключился пользователь: ${socket.id}`);
-
-    socket.on('join-room', (userData: { roomId: string; userName: string }) => {
-      const { roomId, userName } = userData;
-      console.log(userData);
+  io.on('connection', async (socketAny: any) => {
+    try {
+      const socket = socketAny as ExtendedSocket; 
+      console.log(`[${new Date().toLocaleString()}] Подключился пользователь: ${socket.id}`);
       
-      socket.join(roomId);
-      socket.userName = userName;
-      socket.currentRoom = roomId;
+      await redis.setex(`user:${socket.userId}:online`, 30, 'true');
 
-      console.log(`[${new Date().toLocaleString()}] ${userName} вошёл в комнату: ${roomId}`);
-    });
-
-    socket.on('leave-room', (userData: { roomId: string; userName: string }) => {
-      const { roomId, userName } = userData;
-      console.log(userData);
-
-      socket.leave(roomId);
-      socket.currentRoom = null;
-
-      console.log(`[${new Date().toLocaleString()}] ${userName} вышел из комнаты: ${roomId}`);
-    });
-
-    socket.on('message', async (data) => {
-      const { message, roomId } = data;
-
-      if (Buffer.isBuffer(message)) {
-        console.log('Получено бинарное сообщение');
-        return;
-      }
-      const avatar = await getUserAvatar(socket.userName);
-      socket.to(roomId).emit('message', {
-        message,
-        userName: socket.userName,
-        userAvatar: avatar,
-        type: 'chat',
-        renderTime: new Date().toISOString()
+      io.emit('user-status-change', {
+        userId: socket.userId,
+        status: 'online'
       });
 
-      saveMessages({ message, userId: Number(socket.userId), chatId: roomId });
-    });
+      socket.on('join-room', (userData: { roomId: string; userName: string }) => {
+        const { roomId, userName } = userData;
+        console.log(userData);
+        
+        socket.join(roomId);
+        socket.userName = userName;
+        socket.currentRoom = roomId;
 
-    socket.on('user-join-voice', ({roomId}) => {
-      console.log(socket.userId);
+        console.log(`[${new Date().toLocaleString()}] ${userName} вошёл в комнату: ${roomId}`);
+      });
 
-      socket.join(roomId);
-      console.log(`[${new Date().toLocaleString()}] ${socket.userName} вошёл в комнату: ${roomId}`);
-    });
+      socket.on('leave-room', (userData: { roomId: string; userName: string }) => {
+        const { roomId, userName } = userData;
 
-    socket.on('user-left-voice', ({roomId}) => {
-      console.log(socket.userId);
+        socket.leave(roomId);
+        socket.currentRoom = null;
 
-      socket.leave(roomId);
-      console.log(`[${new Date().toLocaleString()}] ${socket.userName} вышел из комнаты: ${roomId}`);
-    });
+        console.log(`[${new Date().toLocaleString()}] ${userName} вышел из комнаты: ${roomId}`);
+      });
 
-    socket.on('voice-signal', (data) => {
-      const { signal, roomId, to } = data;
-      
-      if (to) {
-        socket.to(to).emit('voice-signal', {
-          signal,
-          from: socket.id,
-          userName: socket.userName,
-        });
-      } else {
-        socket.to(roomId).emit('voice-signal', {
-          signal,
-          userName: socket.userName,
-        });
-      }
-    })
+      socket.on('message', async (data) => {
+        const { message, roomId } = data;
 
-    socket.on('voice-chat-participants', (data) => {
-      const { roomId } = data;
-      const room = io.sockets.adapter.rooms.get(roomId);
-      const participants = room ? Array.from(room).map((socketId) => {
-        const clientSocket = io.sockets.sockets.get(socketId) as ExtendedSocket;
-        return {
-          socketId,
-          userId: clientSocket?.userId,
-          userName: clientSocket?.userName,
+        if (Buffer.isBuffer(message)) {
+          console.log('Получено бинарное сообщение');
+          return;
         }
-      }) : []; 
-      console.log(participants);
+        const avatar = await getUserAvatar(socket.userName);
+        socket.to(roomId).emit('message', {
+          message,
+          userName: socket.userName,
+          userAvatar: avatar,
+          type: 'chat',
+          renderTime: new Date().toISOString()
+        });
+
+        saveMessages({ message, userId: Number(socket.userId), chatId: roomId });
+      });
+
+      socket.on('user-join-voice', ({roomId}) => {
+        socket.join(roomId);
+        console.log(`[${new Date().toLocaleString()}] ${socket.userName} вошёл в комнату: ${roomId}`);
+      });
+
+      socket.on('user-left-voice', ({roomId}) => {
+        console.log(socket.userId);
+
+        socket.leave(roomId);
+        console.log(`[${new Date().toLocaleString()}] ${socket.userName} вышел из комнаты: ${roomId}`);
+      });
+
+      socket.on('voice-signal', (data) => {
+        const { signal, roomId, to } = data;
+        
+        if (to) {
+          socket.to(to).emit('voice-signal', {
+            signal,
+            from: socket.id,
+            userName: socket.userName,
+          });
+        } else {
+          socket.to(roomId).emit('voice-signal', {
+            signal,
+            userName: socket.userName,
+          });
+        }
+      })
+
+      socket.on('voice-chat-participants', (data) => {
+        const { roomId } = data;
+        const room = io.sockets.adapter.rooms.get(roomId);
+        const participants = room ? Array.from(room).map((socketId) => {
+          const clientSocket = io.sockets.sockets.get(socketId) as ExtendedSocket;
+          return {
+            socketId,
+            userId: clientSocket?.userId,
+            userName: clientSocket?.userName,
+          }
+        }) : []; 
+        console.log(participants);
+        
+        socket.emit('voice-chat-participants', participants);
+      });
+
+      socket.on('error', (error) => {
+        console.error(`[${new Date().toLocaleString()}] Ошибка сокета ${socket.id}:`, error);
+      });
+
+      socket.on('disconnect', async () => {
+        if (socket.currentRoom) {
+        socket.to(socket.currentRoom).emit('stop-typing', {
+            userName: socket.userName,
+          })
+        }
+        await redis.del(`user:${socket.userId}:online`);
+        await redis.set(`user:${socket.userId}:last_seen`, new Date().toISOString());
+        io.emit('user-status-change', {
+          userId: socket.userId,
+          status:'offline'
+        });
+        console.log(`[${new Date().toLocaleString()}] Пользователь отключился: ${socket.id}`);
+      });
+
+      socket.on('send-typing', () => {
+        if (!socket.currentRoom) {
+          return;
+        }
+        socket.to(socket.currentRoom).emit('send-typing', {
+          userName: socket.userName,
+        })
+      })
+
+      socket.on('stop-typing', () => {
+        if (!socket.currentRoom) {
+          return;
+        }
+        socket.to(socket.currentRoom).emit('stop-typing', {
+          userName: socket.userName,
+        })
+      })
+
+      socket.on('ping-online', async () => {
+        await redis.setex(`user:${socket.userId}:online`, 30, 'true');
+      })
+    } catch (error) {
+      console.error(`[${new Date().toLocaleString()}]:  ${error}`);
       
-      socket.emit('voice-chat-participants', participants);
-    });
-
-    socket.on('error', (error) => {
-      console.error(`[${new Date().toLocaleString()}] Ошибка сокета ${socket.id}:`, error);
-    });
-
-    socket.on('disconnect', () => {
-      console.log(`[${new Date().toLocaleString()}] Пользователь отключился: ${socket.id}`);
-    });
+    }
   });
 
   io.on('error', (error) => {
