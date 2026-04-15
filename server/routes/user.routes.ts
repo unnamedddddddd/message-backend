@@ -531,33 +531,22 @@ router.get('/api/me/friends', authMiddleware, async (req: CustomRequest, res) =>
   }
 });
 
-router.post('/api/chats/personal-chats', authMiddleware, async (req: CustomRequest, res) => {
+router.post('/api/personal-chat/get-or-create', authMiddleware, async (req: CustomRequest, res) => {
   try {
-    const { friendId } = req.body;
-    const userId = req.userId
+    const {firstUserId, secondUserId} = req.body;
 
-    const user1 = Math.min(Number(userId), Number(friendId));
-    const user2 = Math.max(Number(userId), Number(friendId));
-
-    let personalChat = await pool.query(
-      'SELECT personal_chat_id  FROM "PersonalChats" WHERE user_id_first = $1 AND user_id_second = $2', 
-      [user1, user2]
+     const result = await pool.query(
+      `INSERT INTO "PersonalChats" (user_id_first, user_id_second)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id_first, user_id_second)
+       DO UPDATE SET user_id_first = EXCLUDED.user_id_first
+       RETURNING personal_chat_id`,
+      [firstUserId, secondUserId]
     );
 
-    let chatId;
-     if (personalChat.rows.length === 0) {
-      personalChat = await pool.query(
-        `INSERT INTO "PersonalChats" (user_id_first, user_id_second) 
-        VALUES ($1, $2) 
-        RETURNING personal_chat_id`,
-        [user1, user2]
-      );
-      chatId = personalChat.rows[0].personal_chat_id;
-    } else {
-      chatId = personalChat.rows[0].personal_chat_id;
-    }
+    const chatId = result.rows[0].personal_chat_id;
 
-  res.json({ chatId, success: true });
+    res.json({ chatId, success: true });
   } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);

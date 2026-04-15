@@ -8,6 +8,7 @@ import { redis } from "../configs/redis.config.ts";
 interface ExtendedSocket extends Socket {
   userId: number | string;
   userName?: string;
+  chatType: 'server' | 'personal';
   currentRoom?: string | null;
 }
 
@@ -24,25 +25,44 @@ redis.on('error', (error: Error) => {
   console.error('❌ Ошибка Redis:', error);
 });
 
-const saveMessages = async ({message, userId, chatId}: SaveMessage) => {
+const saveMessages = async ({message, userId, chatId, chatType}: SaveMessage) => {
   console.log(message, chatId, userId);
   
   try {
    await pool.query(
-    `INSERT INTO "Messages" (chat_id, user_id, message_text) 
+    `INSERT INTO "Messages" (chat_id, user_id, message_text, chat_type) 
       VALUES (
       $1,
       $2, 
-      $3
+      $3,
+      $4
     ) 
     RETURNING message_id`,
-    [chatId, userId, message]
+    [chatId, userId, message, chatType]
    );
 
   } catch (error) {
     console.error(error);
   }
 } 
+
+const getFriends = async(userId: number) => {
+  const friends = await pool.query(
+    `SELECT 
+      f.friend_id
+    FROM "Friends" f
+    JOIN "Users" u ON f.friend_id = u.user_id
+    WHERE f.user_id = $1 
+    ORDER BY f.created_at DESC`,
+    [userId]
+  )
+  
+  if (friends.rows.length === 0) {
+    return [];
+  }
+  return friends.rows;
+}
+
 
 const getCookie = (cookieHeader: string, name: string): string | undefined  => {
   const match = cookieHeader.match(new RegExp(`(^| )${name}=([^;]+)`));
@@ -107,20 +127,19 @@ export const socketHandler = (io: Server) => {
       console.log(`[${new Date().toLocaleString()}] Подключился пользователь: ${socket.id}`);
       
       await redis.setex(`user:${socket.userId}:online`, 30, 'true');
-
       io.emit('user-status-change', {
         userId: socket.userId,
         status: 'online'
       });
 
-      socket.on('join-room', (userData: { roomId: string; userName: string }) => {
-        const { roomId, userName } = userData;
+      socket.on('join-room', (userData: { roomId: string; userName: string, chatType: 'server' | 'personal' }) => {
+        const { roomId, userName, chatType } = userData;
         console.log(userData);
         
         socket.join(roomId);
         socket.userName = userName;
         socket.currentRoom = roomId;
-
+        socket.chatType = chatType;
         console.log(`[${new Date().toLocaleString()}] ${userName} вошёл в комнату: ${roomId}`);
       });
 
@@ -149,7 +168,8 @@ export const socketHandler = (io: Server) => {
           renderTime: new Date().toISOString()
         });
 
-        saveMessages({ message, userId: Number(socket.userId), chatId: roomId });
+        const chatType = socket.chatType;
+        saveMessages({ message, userId: Number(socket.userId), chatId: roomId, chatType});
       });
 
       socket.on('user-join-voice', ({roomId}) => {
@@ -237,6 +257,20 @@ export const socketHandler = (io: Server) => {
       socket.on('ping-online', async () => {
         await redis.setex(`user:${socket.userId}:online`, 30, 'true');
       })
+
+      socket.on('online-users', async () => {
+        const friends = await getFriends(Number(socket.userId));
+        
+        const keys = friends?.map(f => `user:${f.friend_id}:online`)
+        const values = await redis.mget(keys)        
+        const result = friends.map((f, i) => ({
+          ...f,
+          online: values[i] === 'true',
+        }))
+        
+        socket.emit("online-users", result);
+      })
+
     } catch (error) {
       console.error(`[${new Date().toLocaleString()}]:  ${error}`);
       
