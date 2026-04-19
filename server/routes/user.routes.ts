@@ -7,6 +7,7 @@ import { uploadServer, uploadUser } from '../configs/multer.config.ts';
 import fs from 'fs';
 import DEFAULT_USER_AVATAR from '../configs/userAvatar.ts';
 import { sendVerificationEmail } from '../configs/mailer.config.ts';
+import { decrypt } from '../scripts/encryptionMessages.ts';
 
 const router = Router(); 
 
@@ -287,6 +288,12 @@ router.get('/api/servers/:serverId/chats', authMiddleware, async (req: CustomReq
 
 router.get('/api/chats/:chatType/:chatId/messages', async (req, res) => {
   try {
+    const ENCRYPT_SECRET = process.env.ENCRYPT_SECRET;
+
+    if (!ENCRYPT_SECRET) {
+      throw new Error("ENCRYPT_SECRET is missing");
+    }
+
     const { chatType, chatId } = req.params;
     
     if (chatType !== 'server' && chatType !== 'personal') {
@@ -302,7 +309,9 @@ router.get('/api/chats/:chatType/:chatId/messages', async (req, res) => {
         u.user_login, 
         u.user_avatar, 
         m.message_text, 
-        m.created_at 
+        m.created_at,
+        m.auth_tag,
+        m.iv
       FROM "Messages" m
       JOIN "Users" u ON m.user_id = u.user_id
       WHERE m.chat_id = $1 AND m.chat_type = $2
@@ -310,10 +319,19 @@ router.get('/api/chats/:chatType/:chatId/messages', async (req, res) => {
       [chatId, chatType]
     );
     
+    const decryptedMessages = messagesChat.rows.map(message => ({
+      ...message,
+      message_text: decrypt({
+        content: message.message_text,
+        iv: message.iv,
+        tag: message.auth_tag
+      }, ENCRYPT_SECRET)
+    }));
+
     res.json({
       success: true,
-      messages: messagesChat.rows,
-      count: messagesChat.rows.length
+      messages: decryptedMessages,
+      count: decryptedMessages.length,
     });
   
   } catch (error) {

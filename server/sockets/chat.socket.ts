@@ -3,6 +3,7 @@ import { verifyToken } from "../scripts/jwtTools.ts";
 import { pool } from "../configs/db.config.ts";
 import SaveMessage from "../types/SaveMessageProps.ts";
 import { redis } from "../configs/redis.config.ts";
+import { encrypt } from "../scripts/encryptionMessages.ts";
 
 // ИНТЕРФЕЙС
 interface ExtendedSocket extends Socket {
@@ -26,19 +27,30 @@ redis.on('error', (error: Error) => {
 });
 
 const saveMessages = async ({message, userId, chatId, chatType}: SaveMessage) => {
-  console.log(message, chatId, userId);
+  const ENCRYPT_SECRET = process.env.ENCRYPT_SECRET;
+
+  if (!ENCRYPT_SECRET) {
+    throw new Error("ENCRYPT_SECRET is missing");
+  }
+
+  if (!message) return;
+  if (Buffer.isBuffer(message)) return;
+
+  const encryptedMessage = encrypt(message, ENCRYPT_SECRET);
   
   try {
    await pool.query(
-    `INSERT INTO "Messages" (chat_id, user_id, message_text, chat_type) 
+    `INSERT INTO "Messages" (chat_id, user_id, message_text, chat_type, iv, auth_tag) 
       VALUES (
       $1,
       $2, 
       $3,
-      $4
+      $4,
+      $5,
+      $6
     ) 
     RETURNING message_id`,
-    [chatId, userId, message, chatType]
+    [chatId, userId, encryptedMessage.content, chatType, encryptedMessage.iv, encryptedMessage.tag]
    );
 
   } catch (error) {

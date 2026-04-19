@@ -1,15 +1,22 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import jwt from 'jsonwebtoken';
 import type { Response, NextFunction } from 'express';
 import type { CustomRequest } from '../types/CustomRequest.ts';
 import type { JWTError } from '../types/jwtError.ts';
 import type { DecodedToken } from '../types/DecodedToken.ts';
 
-const JWT_SECRET ='lrIHwRP@9#WYzj2_ejYZHFcHNX_uD+JW'; // СДЕЛАТЬ proccess.env ПРИ ДЕПЛОЕ
-const JWT_SECRET_REMEMBER ='lrFHwRP@)xfgn(b3_ejYFFFcsfW_gf+ghh'; // СДЕЛАТЬ proccess.env ПРИ ДЕПЛОЕ
+const JWT_SECRET = process.env.JWT_SECRET; // СДЕЛАТЬ proccess.env ПРИ ДЕПЛОЕ
+const JWT_SECRET_REMEMBER = process.env.JWT_SECRET_REMEMBER; // СДЕЛАТЬ proccess.env ПРИ ДЕПЛОЕ
 
 //ГЕНЕРАЦИЯ ТОКЕНА
 export const generateToken = (userId: number) => {
- return jwt.sign(
+  if (!JWT_SECRET) {
+    throw new Error("JWT_SECRET is not defined in .env");
+  }
+
+  return jwt.sign(
     {userId},
     JWT_SECRET, // СДЕЛАТЬ proccess.env ПРИ ДЕПЛОЕ
     {expiresIn: '24h'}
@@ -17,6 +24,9 @@ export const generateToken = (userId: number) => {
 }
 // ГЕНЕРАЦИЯ ТОКЕНА ДЛЯ ЗАПОМНИТЬ ПОЛЬЗОВАТЕЛЯ
 export const generateTokenRemember = (userId: number) => {
+  if (!JWT_SECRET_REMEMBER) {
+    throw new Error("JWT_SECRET is not defined in .env");
+  }
  return jwt.sign(
     {userId},
     JWT_SECRET_REMEMBER, // СДЕЛАТЬ proccess.env ПРИ ДЕПЛОЕ
@@ -35,6 +45,9 @@ const isJWTError = (error: unknown): error is JWTError => {
 //ПРОВЕРКА ТОКЕНА
 export const verifyToken = (token: string): DecodedToken => {
   try {
+    if (!JWT_SECRET) {
+      throw new Error("JWT_SECRET is not defined in .env");
+    }
     const decoded = jwt.verify(token, JWT_SECRET) as DecodedToken;
     return decoded;
   } catch (error) {
@@ -45,6 +58,9 @@ export const verifyToken = (token: string): DecodedToken => {
 // ПРОМЕЖУТОЧНАЯ ПРОВЕРКА ТОКЕНА
 export const authMiddleware = (req: CustomRequest, res: Response, next: NextFunction) => {
   try {
+    if (!JWT_SECRET) {
+      throw new Error("JWT_SECRET is not defined in .env");
+    }
     const token = req.cookies?.auth_token;
     
     if (!token) {
@@ -90,6 +106,9 @@ export const authMiddleware = (req: CustomRequest, res: Response, next: NextFunc
 
 export const authRememberMiddleware = (req: CustomRequest, res: Response, next: NextFunction) => {
   try {
+    if (!JWT_SECRET_REMEMBER) {
+      throw new Error("JWT_SECRET is not defined in .env");
+    }
     const tokenRemember = req.cookies?.remember_token;
     
     if (!tokenRemember) {

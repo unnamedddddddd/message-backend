@@ -1,13 +1,15 @@
+import dotenv from "dotenv";
 import { Server } from 'socket.io';
 import { createServer } from 'http';
 import express from 'express';
 import cookieParser from 'cookie-parser';
-import userRoutes from './routes/user.routes.ts'; 
 import { socketHandler } from './sockets/chat.socket.ts';
 import { corsExpress, corsOptions } from './configs/cors.config.ts';
 import path from 'path';
+import userRoutes from './routes/user.routes.ts'; 
 
-const PORT = 3000;
+dotenv.config();
+
 const app = express();
 const httpServer = createServer(app);
 
@@ -23,8 +25,8 @@ const io = new Server(httpServer, {
 app.use(userRoutes); 
 socketHandler(io);   
 
-httpServer.listen(PORT, () => {
-  console.log(`Сервер запущен на порту ${PORT}`);
+httpServer.listen(process.env.PORT, () => {
+  console.log(`Сервер запущен на порту ${process.env.PORT}`);
 });
 
 // ДЛЯ ТЕСТОВ
