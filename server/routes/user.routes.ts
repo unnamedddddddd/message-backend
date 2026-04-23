@@ -8,6 +8,9 @@ import fs from 'fs';
 import DEFAULT_USER_AVATAR from '../configs/userAvatar.ts';
 import { sendVerificationEmail } from '../configs/mailer.config.ts';
 import { decrypt } from '../scripts/encryptionMessages.ts';
+import { clientPromise } from '../configs/mongodb.config.ts';
+import { MongoClient } from 'mongodb';
+import { count } from 'console';
 
 const router = Router(); 
 
@@ -296,38 +299,82 @@ router.get('/api/chats/:chatType/:chatId/messages', async (req, res) => {
 
     const { chatType, chatId } = req.params;
     
-    if (chatType !== 'server' && chatType !== 'personal') {
-      return res.status(400).json({
-        success: false,
-        message: 'Некорректный тип чата. Используйте "server" или "personal"'
+    const client: MongoClient = await clientPromise;
+    const messagesColl = client.db('MessangerDB').collection('Messages');
+
+    const messages = await messagesColl.find({
+      chat_id: Number(chatId),
+      chat_type: chatType
+    }).sort({created_at: 1}).toArray();
+    
+    if (messages.length === 0) {
+      return res.json({
+        success: true,
+        messages: [],
+        count: 0,
       });
     }
     
-    const messagesChat = await pool.query(
-      `SELECT 
-        m.user_id, 
-        u.user_login, 
-        u.user_avatar, 
-        m.message_text, 
-        m.created_at,
-        m.auth_tag,
-        m.iv
-      FROM "Messages" m
-      JOIN "Users" u ON m.user_id = u.user_id
-      WHERE m.chat_id = $1 AND m.chat_type = $2
-      ORDER BY m.created_at ASC`,
-      [chatId, chatType]
-    );
-    
-    const decryptedMessages = messagesChat.rows.map(message => ({
-      ...message,
-      message_text: decrypt({
-        content: message.message_text,
-        iv: message.iv,
-        tag: message.auth_tag
-      }, ENCRYPT_SECRET)
-    }));
+    const userIds = [...new Set(messages.map(msg => msg.user_id))];
 
+    const userQuery = await pool.query(
+      `SELECT
+        user_id,
+        user_login,
+        user_avatar  
+      FROM "Users"
+      WHERE user_id = ANY($1::int[])`,
+      [userIds]
+    );
+
+    const usersMap = new Map();
+    userQuery.rows.forEach(user => {
+      usersMap.set(user.user_id, {
+        user_login: user.user_login,
+        user_avatar: user.user_avatar
+      })
+    })
+
+    const combinedMessages = messages.map(msg => {
+      const user = usersMap.get(msg.user_id) 
+      
+      return {
+        _id: msg._id,
+        user_id: msg.user_id,
+        chat_id: msg.chat_id,
+        chat_type: msg.chat_type,
+        message_type: msg.message_type,
+        created_at: msg.created_at,
+        message_text: msg.message_text, 
+        iv: msg.iv,
+        auth_tag: msg.auth_tag,
+        user_login: user.user_login,
+        user_avatar: user.user_avatar
+      }
+    });
+
+    const decryptedMessages = combinedMessages.map(message => {
+      let decryptedText;
+      
+      try {
+        decryptedText = decrypt({
+          content: message.message_text,
+          iv: message.iv,
+          tag: message.auth_tag
+        }, ENCRYPT_SECRET);
+      } catch (error) {
+        console.error(`Failed to decrypt message ${message._id}:`, error);
+        decryptedText = '[Ошибка расшифровки сообщения]';
+      }
+
+      return {
+        ...message,
+        message_text: decryptedText,
+        iv: undefined,
+        auth_tag: undefined
+      };
+    });
+            
     res.json({
       success: true,
       messages: decryptedMessages,

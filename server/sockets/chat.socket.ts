@@ -4,6 +4,8 @@ import { pool } from "../configs/db.config.ts";
 import SaveMessage from "../types/SaveMessageProps.ts";
 import { redis } from "../configs/redis.config.ts";
 import { encrypt } from "../scripts/encryptionMessages.ts";
+import { MongoClient } from "mongodb";
+import { clientPromise } from "../configs/mongodb.config.ts";
 
 // ИНТЕРФЕЙС
 interface ExtendedSocket extends Socket {
@@ -39,19 +41,18 @@ const saveMessages = async ({message, userId, chatId, chatType}: SaveMessage) =>
   const encryptedMessage = encrypt(message, ENCRYPT_SECRET);
   
   try {
-   await pool.query(
-    `INSERT INTO "Messages" (chat_id, user_id, message_text, chat_type, iv, auth_tag) 
-      VALUES (
-      $1,
-      $2, 
-      $3,
-      $4,
-      $5,
-      $6
-    ) 
-    RETURNING message_id`,
-    [chatId, userId, encryptedMessage.content, chatType, encryptedMessage.iv, encryptedMessage.tag]
-   );
+    const client: MongoClient = await clientPromise;
+    const messages = client.db('MessangerDB').collection('Messages')
+    await messages.insertOne({
+      chat_id: Number(chatId),
+      message_text: encryptedMessage.content,
+      message_type: 'text',
+      user_id: userId, 
+      chat_type: chatType,
+      created_at: new Date().toISOString(),
+      iv: encryptedMessage.iv,
+      auth_tag: encryptedMessage.tag
+    })
 
   } catch (error) {
     console.error(error);
