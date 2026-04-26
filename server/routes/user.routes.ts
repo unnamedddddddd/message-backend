@@ -240,16 +240,53 @@ router.post('/api/forgotPassword', async (req, res) => {
   }
 });
 
-router.get('/api/servers/',authMiddleware, async (req: CustomRequest, res) => {
+router.get('/api/servers/', authMiddleware, async (req: CustomRequest, res) => {
   try {
+    const userId = req.userId;
+
     const servers = await pool.query(
-      'SELECT server_id, server_name, server_avatar FROM "Servers"'
+      `SELECT 
+        s.server_id, 
+        s.server_name, 
+        s.server_avatar 
+      FROM "Subscriptions" sub
+      JOIN "Servers" s ON sub.server_id = s.server_id
+      WHERE sub.user_id = $1 
+      ORDER BY sub.created_at DESC`,
+      [userId]
     )
         
     if (servers.rows.length === 0) {
         return res.status(404).json({
         success: false,
-        message: 'Сервер не найден',
+        message: 'Сервера не найдены',
+      });
+    }
+    
+    res.json({
+      success: true,
+      servers: servers.rows
+    })
+  } catch (error) { 
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+});
+
+router.get('/api/servers/find', authMiddleware, async (req: CustomRequest, res) => {
+  try {
+    const { search } = req.query;
+    
+    const servers = await pool.query(
+      `SELECT server_id, server_name, server_avatar FROM "Servers" WHERE server_name ILIKE $1 || '%' `,
+      [search]
+    )
+        console.log(servers.rows);
+        
+    if (servers.rows.length === 0) {
+        return res.status(404).json({
+        success: false,
+        message: 'Сервера не найден',
       });
     }
     
@@ -516,21 +553,21 @@ router.post('/api/users/:userId/confirmCode', authMiddleware, async (req: Custom
   }
 });
 
-
-router.post('/api/servers/createServer/:serverName', uploadServer.single('avatar'), async (req, res) => {
+router.post('/api/servers/createServer', uploadServer.single('avatar'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Файл не пришел' });
-    const { serverName } = req.params
-
-    const pathAvatar = `/uploads/ServersAvatars/${req.file.filename}`;
-    console.log(req.file.filename);
+    const { user_id, server_name } = req.body;
+    const pathAvatar = `/uploads/ServersAvatars/${req.file.filename}`;    
     
-    
-    await pool.query(
-      'INSERT INTO "Servers" (server_name, server_avatar) VALUES($1, $2)',
-      [serverName, pathAvatar]
+    const resultServer = await pool.query(
+      'INSERT INTO "Servers" (server_name, server_avatar, admin_id) VALUES($1, $2, $3) RETURNING server_id',
+      [server_name, pathAvatar, user_id]
     )
-  
+    await pool.query(
+      'INSERT INTO "Subscriptions" (server_id, user_id) VALUES($1, $2)',
+      [resultServer.rows[0].server_id, user_id]
+    )
+
     res.json({ 
       success: true, 
       message: 'Сервер успешно создан'
@@ -596,11 +633,162 @@ router.get('/api/me/friends', authMiddleware, async (req: CustomRequest, res) =>
   }
 });
 
+router.get('/api/servers/:serverId/members', authMiddleware, async (req: CustomRequest, res) => {
+  try {
+    const { serverId } = req.params;
+    
+    const members = await pool.query(
+        `SELECT 
+        u.user_id,
+        u.user_login, 
+        u.user_avatar
+      FROM "Subscriptions" s
+      JOIN "Users" u ON s.user_id = u.user_id
+      WHERE s.server_id = $1`,
+      [serverId]
+    )
+    if (members.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Участники не найдены',
+      });
+    }
+    
+    res.json({
+      success: true,
+      members : members.rows
+    })
+  } catch (error) { 
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+});
+
+router.post('/api/servers/:serverId/invites', authMiddleware, async (req: CustomRequest, res) => {
+  try {
+    const { serverId } = req.params;
+    const userId = req.userId;
+    
+    const adminId = await pool.query(
+      `SELECT admin_id FROM "Servers" WHERE server_id = $1`,
+      [serverId]
+    );
+  
+    if (adminId.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Админ не найден',
+      });
+    }
+    await pool.query('BEGIN');
+  try {
+    const invitesId = await pool.query(
+      `INSERT INTO "ServersInvites" (server_id, admin_id, sender_id)
+        VALUES($1, $2, $3) RETURNING invite_id` ,
+      [serverId, adminId.rows[0].admin_id, userId]
+    );
+    console.log(adminId.rows[0].admin_id);
+    
+    await pool.query(
+      `INSERT INTO "Notifications" (user_id, type, reference_id)
+        VALUES($1, $2, $3)`,
+      [adminId.rows[0].admin_id, 'invite', invitesId.rows[0].invite_id]
+    );
+    await pool.query('COMMIT');
+  } catch (e) {
+    await pool.query('ROLLBACK');
+    throw e;
+  }
+    res.json({
+      success: true,
+    })
+  } catch (error) { 
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+});
+
+router.get('/api/notifications', authMiddleware, async (req: CustomRequest, res) => {
+  try {
+    const userId = req.userId;
+
+    const notifications = await pool.query(
+      `SELECT 
+        n.notification_id,
+        n.type AS notification_type,
+        n.created_at,
+        n.reference_id,
+        s.server_id,
+        s.server_name,
+        s.server_avatar,
+        si.sender_id,
+        sender.user_id as sender_id, 
+        sender.user_login as sender_login,
+        u.user_login AS friend_login,
+        u.user_avatar AS friend_avatar
+      FROM "Notifications" n
+      LEFT JOIN "ServersInvites" si ON n.reference_id = si.invite_id AND n.type = 'invite'
+      LEFT JOIN "Servers" s ON si.server_id = s.server_id
+      LEFT JOIN "Users" u ON n.reference_id = u.user_id AND n.type = 'friend_request'
+      LEFT JOIN "Users" sender ON si.sender_id = sender.user_id
+      WHERE n.user_id = $1
+      ORDER BY n.created_at DESC`,
+      [userId]
+    );
+    
+    res.json({
+      success: true,
+      notifications: notifications.rows
+    })
+  } catch (error) { 
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+});
+
+router.patch('/api/invites/:inviteId/status', authMiddleware, async (req: CustomRequest, res) => {
+  try {
+    const { inviteId } = req.params;
+    const { status, serverId, senderId } = req.body;
+    
+    if (status !== 'accepted' && status !== 'declined') {
+      return res.status(400).json({
+        success: false,
+        message: 'Неверный статус'
+      });
+    }
+    
+    await pool.query(
+     'UPDATE "ServersInvites" SET status = $1 WHERE invite_id = $2',
+     [status, inviteId]
+    );
+    
+    if (status === 'accepted') {
+      await pool.query(
+        `INSERT INTO "Subscriptions" (server_id, user_id) VALUES($1, $2)`,
+        [serverId, senderId]
+      );  
+    }
+    
+    await pool.query(
+      `DELETE FROM "Notifications" WHERE reference_id = $1 and notification_type = $2`,
+      [inviteId, 'invite']
+    );
+    
+    res.json({
+      success: true,
+    })
+  } catch (error) { 
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+});
+
 router.post('/api/personal-chat/get-or-create', authMiddleware, async (req: CustomRequest, res) => {
   try {
     const {firstUserId, secondUserId} = req.body;
 
-     const result = await pool.query(
+    const result = await pool.query(
       `INSERT INTO "PersonalChats" (user_id_first, user_id_second)
        VALUES ($1, $2)
        ON CONFLICT (user_id_first, user_id_second)
