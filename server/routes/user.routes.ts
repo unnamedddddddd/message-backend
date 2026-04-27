@@ -669,6 +669,22 @@ router.post('/api/servers/:serverId/invites', authMiddleware, async (req: Custom
     const { serverId } = req.params;
     const userId = req.userId;
     
+    const includesServer = await pool.query(
+      `SELECT user_id FROM "Subscriptions" WHERE user_id = $1 AND server_id = $2`,
+      [userId, serverId]
+    );
+    
+console.log('rows:', includesServer.rows);
+console.log('length:', includesServer.rows.length);
+console.log('rowCount:', includesServer.rowCount);
+    
+    if (includesServer.rows.length > 0) {
+      return res.json({
+        success: false,
+        message: 'Вы уже присоединины к этому серверу'
+      })
+    }
+    
     const adminId = await pool.query(
       `SELECT admin_id FROM "Servers" WHERE server_id = $1`,
       [serverId]
@@ -681,24 +697,24 @@ router.post('/api/servers/:serverId/invites', authMiddleware, async (req: Custom
       });
     }
     await pool.query('BEGIN');
-  try {
-    const invitesId = await pool.query(
-      `INSERT INTO "ServersInvites" (server_id, admin_id, sender_id)
-        VALUES($1, $2, $3) RETURNING invite_id` ,
-      [serverId, adminId.rows[0].admin_id, userId]
-    );
-    console.log(adminId.rows[0].admin_id);
-    
-    await pool.query(
-      `INSERT INTO "Notifications" (user_id, type, reference_id)
-        VALUES($1, $2, $3)`,
-      [adminId.rows[0].admin_id, 'invite', invitesId.rows[0].invite_id]
-    );
-    await pool.query('COMMIT');
-  } catch (e) {
-    await pool.query('ROLLBACK');
-    throw e;
-  }
+    try {
+      const invitesId = await pool.query(
+        `INSERT INTO "ServersInvites" (server_id, admin_id, sender_id)
+          VALUES($1, $2, $3) RETURNING invite_id` ,
+        [serverId, adminId.rows[0].admin_id, userId]
+      );
+      console.log(adminId.rows[0].admin_id);
+      
+      await pool.query(
+        `INSERT INTO "Notifications" (user_id, type, reference_id)
+          VALUES($1, $2, $3)`,
+        [adminId.rows[0].admin_id, 'invite', invitesId.rows[0].invite_id]
+      );
+      await pool.query('COMMIT');
+    } catch (e) {
+      await pool.query('ROLLBACK');
+      throw e;
+    }
     res.json({
       success: true,
     })
@@ -750,7 +766,7 @@ router.patch('/api/invites/:inviteId/status', authMiddleware, async (req: Custom
   try {
     const { inviteId } = req.params;
     const { status, serverId, senderId } = req.body;
-    
+
     if (status !== 'accepted' && status !== 'declined') {
       return res.status(400).json({
         success: false,
@@ -771,7 +787,7 @@ router.patch('/api/invites/:inviteId/status', authMiddleware, async (req: Custom
     }
     
     await pool.query(
-      `DELETE FROM "Notifications" WHERE reference_id = $1 and notification_type = $2`,
+      `DELETE FROM "Notifications" WHERE reference_id = $1 and type = $2`,
       [inviteId, 'invite']
     );
     
