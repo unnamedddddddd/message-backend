@@ -1,10 +1,15 @@
 import nodemailer from 'nodemailer';
+import dns from 'dns';
+
+dns.setDefaultResultOrder('ipv4first');
 
 export const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: '74.125.133.108',
+  port: 587,        
+  secure: false,
   auth: {
     user: 'deniskamaldinov85@gmail.com',
-    pass: process.env.MAILER_PASSWORD, // ПОМЕНЯТЬ ПАРОЛЬ И СДЕЛАТЬ proccess.env
+    pass: process.env.MAILER_PASSWORD,
   }
 })
 

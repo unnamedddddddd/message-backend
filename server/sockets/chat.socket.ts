@@ -273,13 +273,19 @@ export const socketHandler = (io: Server) => {
 
       socket.on('online-users', async () => {
         const friends = await getFriends(Number(socket.userId));
+  
+        if (friends.length === 0) {
+          socket.emit("online-users", []);
+          return;
+        }
         
-        const keys = friends?.map(f => `user:${f.friend_id}:online`)
-        const values = await redis.mget(keys)        
+        const keys = friends.map(f => `user:${f.friend_id}:online`);
+        const values = await redis.mget(...keys); 
+        
         const result = friends.map((f, i) => ({
           ...f,
           online: values[i] === 'true',
-        }))
+        }));
         
         socket.emit("online-users", result);
       })

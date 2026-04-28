@@ -286,7 +286,7 @@ router.get('/api/servers/find', authMiddleware, async (req: CustomRequest, res) 
     if (servers.rows.length === 0) {
         return res.status(404).json({
         success: false,
-        message: 'Сервера не найден',
+        message: 'Сервера не найдены',
       });
     }
     
@@ -299,6 +299,33 @@ router.get('/api/servers/find', authMiddleware, async (req: CustomRequest, res) 
     handleDatabaseError(error, res);
   }
 });
+
+router.get('/api/users/find', authMiddleware, async (req: CustomRequest, res) => {
+  try {
+    const { search } = req.query;
+    
+    const users = await pool.query(
+      `SELECT user_id, user_login, user_avatar FROM "Users" WHERE user_login ILIKE $1 || '%' `,
+      [search]
+    )
+        
+    if (users.rows.length === 0) {
+        return res.status(404).json({
+        success: false,
+        message: 'Пользователи не найдены',
+      });
+    }
+    
+    res.json({
+      success: true,
+      users: users.rows
+    })
+  } catch (error) { 
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+});
+
 
 router.get('/api/servers/:serverId/chats', authMiddleware, async (req: CustomRequest, res) => {
   try {
@@ -582,7 +609,6 @@ router.post('/api/servers/:serverId/chats/:chatName', authMiddleware, async (req
   try {
     const { chatType } = req.body;
     const { serverId, chatName } = req.params;
-    console.log(chatType, serverId, chatName);
     
     await pool.query(
       'INSERT INTO "Chats" (chat_name, chat_type, server_id) VALUES($1, $2, $3)',
@@ -669,19 +695,16 @@ router.post('/api/servers/:serverId/invites', authMiddleware, async (req: Custom
     const { serverId } = req.params;
     const userId = req.userId;
     
-    const includesServer = await pool.query(
+    const existingSubscription = await pool.query(
       `SELECT user_id FROM "Subscriptions" WHERE user_id = $1 AND server_id = $2`,
       [userId, serverId]
     );
     
-console.log('rows:', includesServer.rows);
-console.log('length:', includesServer.rows.length);
-console.log('rowCount:', includesServer.rowCount);
     
-    if (includesServer.rows.length > 0) {
+    if (existingSubscription.rows.length > 0) {
       return res.json({
         success: false,
-        message: 'Вы уже присоединины к этому серверу'
+        message: 'Вы уже присоединены к этому серверу'
       })
     }
     
@@ -703,12 +726,55 @@ console.log('rowCount:', includesServer.rowCount);
           VALUES($1, $2, $3) RETURNING invite_id` ,
         [serverId, adminId.rows[0].admin_id, userId]
       );
-      console.log(adminId.rows[0].admin_id);
       
       await pool.query(
         `INSERT INTO "Notifications" (user_id, type, reference_id)
           VALUES($1, $2, $3)`,
         [adminId.rows[0].admin_id, 'invite', invitesId.rows[0].invite_id]
+      );
+      await pool.query('COMMIT');
+    } catch (e) {
+      await pool.query('ROLLBACK');
+      throw e;
+    }
+    res.json({
+      success: true,
+    })
+  } catch (error) { 
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+});
+
+router.post('/api/users/:receivedId/invites', authMiddleware, async (req: CustomRequest, res) => {
+  try {
+    const { receivedId } = req.params;
+    const userId = req.userId;
+  
+    const existingFriendship  = await pool.query(
+      `SELECT user_id FROM "Friends" WHERE user_id = $1 AND friend_id = $2`,
+      [userId, receivedId]
+    );
+    
+    if (existingFriendship.rows.length > 0) {
+      return res.json({
+        success: false,
+        message: 'Вы уже друзья'
+      })  
+    }
+
+    await pool.query('BEGIN');
+    try {
+      const requestId = await pool.query(
+        `INSERT INTO "FriendsRequests" (sender_id, receiver_id)
+          VALUES($1, $2) RETURNING request_id` ,
+        [userId, receivedId]
+      );
+      
+      await pool.query(
+        `INSERT INTO "Notifications" (user_id, type, reference_id)
+          VALUES($1, $2, $3)`,
+        [receivedId, 'friend_request', requestId.rows[0].request_id]
       );
       await pool.query('COMMIT');
     } catch (e) {
@@ -740,17 +806,20 @@ router.get('/api/notifications', authMiddleware, async (req: CustomRequest, res)
         si.sender_id,
         sender.user_id as sender_id, 
         sender.user_login as sender_login,
+        u.user_id as friend_id,
         u.user_login AS friend_login,
         u.user_avatar AS friend_avatar
       FROM "Notifications" n
       LEFT JOIN "ServersInvites" si ON n.reference_id = si.invite_id AND n.type = 'invite'
+      LEFT JOIN "FriendsRequests" fq ON n.reference_id = fq.request_id AND n.type = 'friend_request'
       LEFT JOIN "Servers" s ON si.server_id = s.server_id
-      LEFT JOIN "Users" u ON n.reference_id = u.user_id AND n.type = 'friend_request'
+      LEFT JOIN "Users" u ON fq.sender_id = u.user_id AND n.type = 'friend_request'
       LEFT JOIN "Users" sender ON si.sender_id = sender.user_id
       WHERE n.user_id = $1
       ORDER BY n.created_at DESC`,
       [userId]
     );
+    console.log(notifications.rows[0]);
     
     res.json({
       success: true,
@@ -799,6 +868,52 @@ router.patch('/api/invites/:inviteId/status', authMiddleware, async (req: Custom
     handleDatabaseError(error, res);
   }
 });
+
+router.patch('/api/friendRequests/:requestId/status', authMiddleware, async (req: CustomRequest, res) => {
+  try {
+    const { requestId } = req.params;
+    const { status, senderId } = req.body;
+    const userId = req.userId;
+
+    if (status !== 'accepted' && status !== 'declined') {
+      return res.status(400).json({
+        success: false,
+        message: 'Неверный статус'
+      });
+    }
+
+    await pool.query(
+     'UPDATE "FriendsRequests" SET status = $1, updated_at = NOW() WHERE request_id = $2',
+     [status, requestId]
+    );
+    
+    if (status === 'accepted') {
+      
+      await pool.query(
+        `INSERT INTO "Friends" (user_id, friend_id) VALUES($1, $2)`,
+        [userId, senderId]
+      );  
+
+      await pool.query(
+        `INSERT INTO "Friends" (user_id, friend_id) VALUES($1, $2)`,
+        [senderId, userId]
+      );
+    }
+    
+    await pool.query(
+      `DELETE FROM "Notifications" WHERE reference_id = $1 and type = $2`,
+      [requestId, 'friend_request']
+    );
+    
+    res.json({
+      success: true,
+    })
+  } catch (error) { 
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+});
+
 
 router.post('/api/personal-chat/get-or-create', authMiddleware, async (req: CustomRequest, res) => {
   try {
