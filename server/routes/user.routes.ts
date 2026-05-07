@@ -12,7 +12,7 @@ import { clientPromise } from '../configs/mongodb.config.ts';
 import { MongoClient } from 'mongodb';
 import { count } from 'console';
 
-const router = Router(); 
+const router = Router();
 
 const handleDatabaseError = (error: any, res: any) => {
   console.error('Ошибка БД:', error);
@@ -45,7 +45,7 @@ router.post('/api/createUser', async (req, res) => {
       });
     }
     const hashedPassword = await hashPassword(userPassword);
-    
+
     const result = await pool.query(
       'INSERT INTO "Users" (user_login, user_password) VALUES ($1, $2) RETURNING user_id',
       [userLogin, hashedPassword]
@@ -53,7 +53,7 @@ router.post('/api/createUser', async (req, res) => {
 
     if (result.rows.length > 0) {
       console.log(`Пользователь создан: ${userLogin}`);
-      
+
       return res.status(201).json({
         success: true,
         user_id: result.rows[0].user_id,
@@ -94,9 +94,9 @@ router.post('/api/login', async (req, res) => {
           maxAge: 360 * 60 * 60 * 1000, // 360 часов
           path: '/'
         })
-      }      
+      }
       const token = generateToken(userCheck.rows[0].user_id);
-      
+
       res.cookie('auth_token', token, {
         httpOnly: true,
         secure: false, // ПРИ ДЕПЛОЕ ПОМЕНЯТЬ НА true
@@ -104,7 +104,7 @@ router.post('/api/login', async (req, res) => {
         maxAge: 24 * 60 * 60 * 1000, // 24 часа
         path: '/'
       })
-      
+
       return res.status(200).json({
         success: true,
         user_id: userCheck.rows[0].user_id,
@@ -134,7 +134,7 @@ router.post('/api/logout', async (req, res) => {
 
 router.post('/api/verificationTokenRemember', authRememberMiddleware, async (req: CustomRequest, res) => {
   try {
-    const userId  = req.userId;
+    const userId = req.userId;
     const userCheck = await pool.query(
       'SELECT user_id FROM "Users" WHERE user_id = $1',
       [userId]
@@ -167,29 +167,101 @@ router.post('/api/verificationTokenRemember', authRememberMiddleware, async (req
   }
 });
 
-router.post('/api/me', authMiddleware, async (req, res) => {
+router.get('/api/me', authMiddleware, async (req: CustomRequest, res) => {
   try {
-  const {userId} = req.body;
+    const userId = req.userId;
 
-  const result = await pool.query(
-    'SELECT user_login, user_avatar, user_email, is_verified FROM "Users" WHERE user_id = $1', 
-    [userId]
-  );
+    const result = await pool.query(
+      'SELECT user_login, user_avatar, user_email, is_verified FROM "Users" WHERE user_id = $1',
+      [userId]
+    );
 
-  if (result.rows.length === 0) {
-    return res.status(404).json({
-      success: false,
-      message: 'Пользователь не найден',
-    });
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Пользователь не найден',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      user_login: result.rows[0].user_login,
+      user_avatar: result.rows[0].user_avatar,
+      user_email: result.rows[0].user_email,
+      is_verified: result.rows[0].is_verified,
+    })
+  } catch (error) {
+    console.error(error);
+    handleDatabaseError(error, res);
   }
+})
 
-  return res.status(200).json({
-    success: true,
-    user_login: result.rows[0].user_login,
-    user_avatar: result.rows[0].user_avatar,
-    user_email: result.rows[0].user_email,
-    is_verified: result.rows[0].is_verified,
-  })  
+router.patch('/api/user/profile', authMiddleware, async (req: CustomRequest, res) => {
+  try {
+    const { userDetails } = req.body;
+    const userId = req.userId;
+
+    const checkResult = await pool.query(
+      'SELECT * FROM "Users" WHERE user_id = $1',
+      [userId]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Пользователь не найден',
+      });
+    }
+    console.log(userDetails);
+    
+    await pool.query(
+      `INSERT INTO "Profiles" (user_id, github_href, telegram_href, about_me, status, updated_at)
+    VALUES ($1, $2, $3, $4, $5, NOW())
+    ON CONFLICT (user_id) 
+    DO UPDATE SET 
+      github_href = $2, 
+      telegram_href = $3, 
+      about_me = $4, 
+      status = $5, 
+      updated_at = NOW()`,
+      [userId, userDetails.github_href, userDetails.telegram_href, userDetails.about_me, userDetails.status]
+    )
+
+    return res.status(200).json({
+      success: true,
+      message: 'Профиль успешно изменен'
+    })
+  } catch (error) {
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+})
+
+router.get('/api/user/profile', authMiddleware, async (req: CustomRequest, res) => {
+  try {
+    const userId = req.userId;
+
+    const result = await pool.query(
+      `SELECT 
+      github_href, 
+      telegram_href, 
+      status, 
+      about_me 
+    FROM "Profiles" WHERE user_id = $1`,
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: true,
+        userProfile: null,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      profile: result.rows[0],
+    })
   } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
@@ -200,7 +272,7 @@ router.post('/api/logout', (req, res) => {
   res.clearCookie('auth_token', {
     path: '/',
   });
-  
+
   res.status(200).json({
     success: true,
     message: 'Выход выполнен успешно',
@@ -223,9 +295,11 @@ router.post('/api/forgotPassword', async (req, res) => {
       });
     }
 
+    const hashedPassword = await hashPassword(newUserPassword);
+
     await pool.query(
       'UPDATE "Users" SET user_password = $1 WHERE user_login = $2',
-      [newUserPassword, userLogin]
+      [hashedPassword, userLogin]
     );
 
     return res.status(200).json({
@@ -255,19 +329,19 @@ router.get('/api/servers/', authMiddleware, async (req: CustomRequest, res) => {
       ORDER BY sub.created_at DESC`,
       [userId]
     )
-        
+
     if (servers.rows.length === 0) {
-        return res.status(404).json({
+      return res.status(404).json({
         success: false,
         message: 'Сервера не найдены',
       });
     }
-    
+
     res.json({
       success: true,
       servers: servers.rows
     })
-  } catch (error) { 
+  } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
   }
@@ -276,25 +350,25 @@ router.get('/api/servers/', authMiddleware, async (req: CustomRequest, res) => {
 router.get('/api/servers/find', authMiddleware, async (req: CustomRequest, res) => {
   try {
     const { search } = req.query;
-    
+
     const servers = await pool.query(
       `SELECT server_id, server_name, server_avatar FROM "Servers" WHERE server_name ILIKE $1 || '%' `,
       [search]
     )
-        console.log(servers.rows);
-        
+    console.log(servers.rows);
+
     if (servers.rows.length === 0) {
-        return res.status(404).json({
+      return res.status(404).json({
         success: false,
         message: 'Сервера не найдены',
       });
     }
-    
+
     res.json({
       success: true,
       servers: servers.rows
     })
-  } catch (error) { 
+  } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
   }
@@ -303,24 +377,24 @@ router.get('/api/servers/find', authMiddleware, async (req: CustomRequest, res) 
 router.get('/api/users/find', authMiddleware, async (req: CustomRequest, res) => {
   try {
     const { search } = req.query;
-    
+
     const users = await pool.query(
       `SELECT user_id, user_login, user_avatar FROM "Users" WHERE user_login ILIKE $1 || '%' `,
       [search]
     )
-        
+
     if (users.rows.length === 0) {
-        return res.status(404).json({
+      return res.status(404).json({
         success: false,
         message: 'Пользователи не найдены',
       });
     }
-    
+
     res.json({
       success: true,
       users: users.rows
     })
-  } catch (error) { 
+  } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
   }
@@ -330,19 +404,19 @@ router.get('/api/users/find', authMiddleware, async (req: CustomRequest, res) =>
 router.get('/api/servers/:serverId/chats', authMiddleware, async (req: CustomRequest, res) => {
   try {
     const { serverId } = req.params;
-    
+
     const chatsServer = await pool.query(
       'SELECT chat_id, chat_name, chat_type FROM "Chats" WHERE server_id = $1',
       [serverId]
     )
 
     if (chatsServer.rows.length === 0) {
-        return res.status(404).json({
+      return res.status(404).json({
         success: false,
         message: 'Сервер не найден',
       });
     }
-    
+
     res.json({
       success: true,
       chats: chatsServer.rows
@@ -362,15 +436,15 @@ router.get('/api/chats/:chatType/:chatId/messages', async (req, res) => {
     }
 
     const { chatType, chatId } = req.params;
-    
+
     const client: MongoClient = await clientPromise;
     const messagesColl = client.db('MessangerDB').collection('Messages');
 
     const messages = await messagesColl.find({
       chat_id: Number(chatId),
       chat_type: chatType
-    }).sort({created_at: 1}).toArray();
-    
+    }).sort({ created_at: 1 }).toArray();
+
     if (messages.length === 0) {
       return res.json({
         success: true,
@@ -378,7 +452,7 @@ router.get('/api/chats/:chatType/:chatId/messages', async (req, res) => {
         count: 0,
       });
     }
-    
+
     const userIds = [...new Set(messages.map(msg => msg.user_id))];
 
     const userQuery = await pool.query(
@@ -400,8 +474,8 @@ router.get('/api/chats/:chatType/:chatId/messages', async (req, res) => {
     })
 
     const combinedMessages = messages.map(msg => {
-      const user = usersMap.get(msg.user_id) 
-      
+      const user = usersMap.get(msg.user_id)
+
       return {
         _id: msg._id,
         user_id: msg.user_id,
@@ -409,7 +483,7 @@ router.get('/api/chats/:chatType/:chatId/messages', async (req, res) => {
         chat_type: msg.chat_type,
         message_type: msg.message_type,
         created_at: msg.created_at,
-        message_text: msg.message_text, 
+        message_text: msg.message_text,
         iv: msg.iv,
         auth_tag: msg.auth_tag,
         user_login: user.user_login,
@@ -417,9 +491,10 @@ router.get('/api/chats/:chatType/:chatId/messages', async (req, res) => {
       }
     });
 
+
     const decryptedMessages = combinedMessages.map(message => {
       let decryptedText;
-      
+
       try {
         decryptedText = decrypt({
           content: message.message_text,
@@ -438,13 +513,155 @@ router.get('/api/chats/:chatType/:chatId/messages', async (req, res) => {
         auth_tag: undefined
       };
     });
-            
+
     res.json({
       success: true,
       messages: decryptedMessages,
       count: decryptedMessages.length,
     });
-  
+
+  } catch (error) {
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+});
+
+router.patch('/api/users/:userId/profile', authMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { userDetails } = req.body;
+
+    const checkResult = await pool.query(
+      'SELECT * FROM "Users" WHERE user_id = $1',
+      [userId]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Пользователь не найден',
+      });
+    }
+
+    await pool.query(
+      `INSERT INTO "Profiles" (user_id, github_href, telegram_href, about_me, status, updated_at)
+    VALUES ($1, $2, $3, $4, $5, NOW())
+    ON CONFLICT (user_id) 
+    DO UPDATE SET 
+      github_href = $2, 
+      telegram_href = $3, 
+      about_me = $4, 
+      status = $5, 
+      updated_at = NOW()`,
+      [userId, userDetails.github_href, userDetails.telegram_href, userDetails.about_me, userDetails.status]
+    )
+
+    return res.status(200).json({
+      success: true,
+
+    })
+  } catch (error) {
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+})
+
+router.get('/api/users/:userId/profile', authMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const result = await pool.query(
+      `SELECT 
+      github_href, 
+      telegram_href, 
+      status, 
+      about_me 
+    FROM "Profiles" WHERE user_id = $1`,
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Пользователь не найден',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      userProfile: result,
+    })
+  } catch (error) {
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+})
+
+router.get('/api/users/profile', authMiddleware, async (req: CustomRequest, res) => {
+  try {
+    const userId = req.userId;
+
+    const result = await pool.query(
+      `SELECT 
+      github_href, 
+      telegram_href, 
+      status, 
+      about_me 
+    FROM "Profiles" WHERE user_id = $1`,
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Пользователь не найден',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      userProfile: result,
+    })
+  } catch (error) {
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+})
+
+router.patch('/api/user/profile', authMiddleware, async (req: CustomRequest, res) => {
+  try {
+    const { userDetails } = req.body;
+    const userId = req.userId;
+
+    const checkResult = await pool.query(
+      'SELECT * FROM "Users" WHERE user_id = $1',
+      [userId]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Пользователь не найден',
+      });
+    }
+    
+    await pool.query(
+      `INSERT INTO "Profiles" (user_id, github_href, telegram_href, about_me, status, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (user_id) 
+       DO UPDATE SET 
+         github_href = $2, 
+         telegram_href = $3, 
+         about_me = $4,   
+         status = $5, 
+         updated_at = NOW()`,
+      [userId, userDetails.github_href, userDetails.telegram_href, userDetails.about_me, userDetails.status]
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Профиль успешно обновлён',
+    });
   } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
@@ -452,7 +669,7 @@ router.get('/api/chats/:chatType/:chatId/messages', async (req, res) => {
 });
 
 router.post('/api/users/:userId/avatar', authMiddleware, uploadUser.single('avatar'), async (req: CustomRequest, res) => {
-   try {
+  try {
     if (!req.file) return res.status(400).json({ error: 'Файл не пришел' });
     const userId = req.userId;
 
@@ -470,7 +687,7 @@ router.post('/api/users/:userId/avatar', authMiddleware, uploadUser.single('avat
       'UPDATE "Users" SET user_avatar = $1 WHERE user_id = $2',
       [pathAvatar, userId]
     )
-   res.json({ success: true, avatar: pathAvatar });
+    res.json({ success: true, avatar: pathAvatar });
   } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
@@ -483,7 +700,7 @@ router.post('/api/users/:userId/confirmEmail', authMiddleware, async (req: Custo
     const { userEmail } = req.body;
 
     const checkUser = await pool.query(
-      'SELECT user_login FROM "Users" WHERE user_id = $1', 
+      'SELECT user_login FROM "Users" WHERE user_id = $1',
       [userId]
     );
 
@@ -495,7 +712,7 @@ router.post('/api/users/:userId/confirmEmail', authMiddleware, async (req: Custo
     }
 
     const checkEmail = await pool.query(
-      'SELECT user_id FROM "Users" WHERE user_email = $1', 
+      'SELECT user_id FROM "Users" WHERE user_email = $1',
       [userEmail]
     );
 
@@ -509,7 +726,7 @@ router.post('/api/users/:userId/confirmEmail', authMiddleware, async (req: Custo
     await pool.query('DELETE FROM "VerificationCode" WHERE user_id = $1', [userId]);
 
     const verifyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    
+
     await pool.query(
       'INSERT INTO "VerificationCode" (code_text, user_id) VALUES ($1, $2)',
       [verifyCode, userId]
@@ -522,24 +739,24 @@ router.post('/api/users/:userId/confirmEmail', authMiddleware, async (req: Custo
 
     sendVerificationEmail(userEmail, verifyCode);
 
-    res.json({ 
+    res.json({
       userEmail,
-      success: true,  
+      success: true,
       message: 'Код потверждения отправлен',
     });
   } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
   }
-});  
+});
 
 router.post('/api/users/:userId/confirmCode', authMiddleware, async (req: CustomRequest, res) => {
   try {
     const userId = req.userId;
     const { userCode } = req.body;
-    
+
     const result = await pool.query(
-      'SELECT user_login, user_avatar FROM "Users" WHERE user_id = $1', 
+      'SELECT user_login, user_avatar FROM "Users" WHERE user_id = $1',
       [userId]
     );
 
@@ -549,18 +766,18 @@ router.post('/api/users/:userId/confirmCode', authMiddleware, async (req: Custom
         message: 'Пользователь не найден',
       });
     }
-  
+
     const checkCode = await pool.query(
-      'SELECT code_text FROM "VerificationCode" WHERE user_id = $1', 
+      'SELECT code_text FROM "VerificationCode" WHERE user_id = $1',
       [userId]
     );
 
-  
+
     if (checkCode.rows[0].code_text !== userCode) {
-      return res.json({ 
-      success: false,  
-      message: 'Код потверждения не корректный',
-    });
+      return res.json({
+        success: false,
+        message: 'Код потверждения не корректный',
+      });
     }
 
     await pool.query(
@@ -568,10 +785,10 @@ router.post('/api/users/:userId/confirmCode', authMiddleware, async (req: Custom
       [userId]
     )
 
-    await pool.query('DELETE FROM "VerificationCode" WHERE user_id = $1', [userId]);    
+    await pool.query('DELETE FROM "VerificationCode" WHERE user_id = $1', [userId]);
 
-    return res.json({ 
-      success: true,  
+    return res.json({
+      success: true,
       message: 'Почта потверждена',
     });
   } catch (error) {
@@ -584,8 +801,8 @@ router.post('/api/servers/createServer', uploadServer.single('avatar'), async (r
   try {
     if (!req.file) return res.status(400).json({ error: 'Файл не пришел' });
     const { user_id, server_name } = req.body;
-    const pathAvatar = `/uploads/ServersAvatars/${req.file.filename}`;    
-    
+    const pathAvatar = `/uploads/ServersAvatars/${req.file.filename}`;
+
     const resultServer = await pool.query(
       'INSERT INTO "Servers" (server_name, server_avatar, admin_id) VALUES($1, $2, $3) RETURNING server_id',
       [server_name, pathAvatar, user_id]
@@ -595,41 +812,41 @@ router.post('/api/servers/createServer', uploadServer.single('avatar'), async (r
       [resultServer.rows[0].server_id, user_id]
     )
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: 'Сервер успешно создан'
     });
   } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
-  }  
+  }
 })
 
 router.post('/api/servers/:serverId/chats/:chatName', authMiddleware, async (req, res) => {
   try {
     const { chatType } = req.body;
     const { serverId, chatName } = req.params;
-    
+
     await pool.query(
       'INSERT INTO "Chats" (chat_name, chat_type, server_id) VALUES($1, $2, $3)',
       [chatName, chatType, serverId]
     )
-  
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       message: 'Чат успешно создан'
     });
   } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
-  }  
+  }
 })
 
 router.get('/api/me/friends', authMiddleware, async (req: CustomRequest, res) => {
   try {
     const userId = req.userId
     const friends = await pool.query(
-        `SELECT 
+      `SELECT 
         f.id,
         f.friend_id,
         u.user_login, 
@@ -641,19 +858,19 @@ router.get('/api/me/friends', authMiddleware, async (req: CustomRequest, res) =>
       ORDER BY f.created_at DESC`,
       [userId]
     )
-    
+
     if (friends.rows.length === 0) {
-        return res.status(404).json({
+      return res.status(404).json({
         success: false,
         message: 'Друг не найден',
       });
     }
-    
+
     res.json({
       success: true,
       friends: friends.rows
     })
-  } catch (error) { 
+  } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
   }
@@ -662,9 +879,9 @@ router.get('/api/me/friends', authMiddleware, async (req: CustomRequest, res) =>
 router.get('/api/servers/:serverId/members', authMiddleware, async (req: CustomRequest, res) => {
   try {
     const { serverId } = req.params;
-    
+
     const members = await pool.query(
-        `SELECT 
+      `SELECT 
         u.user_id,
         u.user_login, 
         u.user_avatar
@@ -679,12 +896,12 @@ router.get('/api/servers/:serverId/members', authMiddleware, async (req: CustomR
         message: 'Участники не найдены',
       });
     }
-    
+
     res.json({
       success: true,
-      members : members.rows
+      members: members.rows
     })
-  } catch (error) { 
+  } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
   }
@@ -694,25 +911,25 @@ router.post('/api/servers/:serverId/invites', authMiddleware, async (req: Custom
   try {
     const { serverId } = req.params;
     const userId = req.userId;
-    
+
     const existingSubscription = await pool.query(
       `SELECT user_id FROM "Subscriptions" WHERE user_id = $1 AND server_id = $2`,
       [userId, serverId]
     );
-    
-    
+
+
     if (existingSubscription.rows.length > 0) {
       return res.json({
         success: false,
         message: 'Вы уже присоединены к этому серверу'
       })
     }
-    
+
     const adminId = await pool.query(
       `SELECT admin_id FROM "Servers" WHERE server_id = $1`,
       [serverId]
     );
-  
+
     if (adminId.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -726,7 +943,7 @@ router.post('/api/servers/:serverId/invites', authMiddleware, async (req: Custom
           VALUES($1, $2, $3) RETURNING invite_id` ,
         [serverId, adminId.rows[0].admin_id, userId]
       );
-      
+
       await pool.query(
         `INSERT INTO "Notifications" (user_id, type, reference_id)
           VALUES($1, $2, $3)`,
@@ -740,7 +957,7 @@ router.post('/api/servers/:serverId/invites', authMiddleware, async (req: Custom
     res.json({
       success: true,
     })
-  } catch (error) { 
+  } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
   }
@@ -750,17 +967,34 @@ router.post('/api/users/:receivedId/invites', authMiddleware, async (req: Custom
   try {
     const { receivedId } = req.params;
     const userId = req.userId;
-  
-    const existingFriendship  = await pool.query(
-      `SELECT user_id FROM "Friends" WHERE user_id = $1 AND friend_id = $2`,
+
+    const existingFriendship = await pool.query(
+      `SELECT user_id FROM "Friends" 
+      WHERE (user_id = $1 AND friend_id = $2) 
+          OR (user_id = $2 AND friend_id = $1)`,
       [userId, receivedId]
-    );
-    
+    )
+
     if (existingFriendship.rows.length > 0) {
       return res.json({
         success: false,
         message: 'Вы уже друзья'
-      })  
+      })
+    }
+
+    const existingRequest = await pool.query(
+      `SELECT request_id FROM "FriendsRequests" 
+      WHERE sender_id = $1 AND receiver_id = $2 
+      OR sender_id = $2 AND receiver_id = $1
+      LIMIT 1`,
+      [userId, receivedId]
+    );
+
+    if (existingRequest.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: 'Заявка уже отправлена',
+      });
     }
 
     await pool.query('BEGIN');
@@ -770,7 +1004,7 @@ router.post('/api/users/:receivedId/invites', authMiddleware, async (req: Custom
           VALUES($1, $2) RETURNING request_id` ,
         [userId, receivedId]
       );
-      
+
       await pool.query(
         `INSERT INTO "Notifications" (user_id, type, reference_id)
           VALUES($1, $2, $3)`,
@@ -784,7 +1018,7 @@ router.post('/api/users/:receivedId/invites', authMiddleware, async (req: Custom
     res.json({
       success: true,
     })
-  } catch (error) { 
+  } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
   }
@@ -820,12 +1054,12 @@ router.get('/api/notifications', authMiddleware, async (req: CustomRequest, res)
       [userId]
     );
     console.log(notifications.rows[0]);
-    
+
     res.json({
       success: true,
       notifications: notifications.rows
     })
-  } catch (error) { 
+  } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
   }
@@ -842,28 +1076,28 @@ router.patch('/api/invites/:inviteId/status', authMiddleware, async (req: Custom
         message: 'Неверный статус'
       });
     }
-    
+
     await pool.query(
-     'UPDATE "ServersInvites" SET status = $1 WHERE invite_id = $2',
-     [status, inviteId]
+      'UPDATE "ServersInvites" SET status = $1 WHERE invite_id = $2',
+      [status, inviteId]
     );
-    
+
     if (status === 'accepted') {
       await pool.query(
         `INSERT INTO "Subscriptions" (server_id, user_id) VALUES($1, $2)`,
         [serverId, senderId]
-      );  
+      );
     }
-    
+
     await pool.query(
       `DELETE FROM "Notifications" WHERE reference_id = $1 and type = $2`,
       [inviteId, 'invite']
     );
-    
+
     res.json({
       success: true,
     })
-  } catch (error) { 
+  } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
   }
@@ -883,32 +1117,32 @@ router.patch('/api/friendRequests/:requestId/status', authMiddleware, async (req
     }
 
     await pool.query(
-     'UPDATE "FriendsRequests" SET status = $1, updated_at = NOW() WHERE request_id = $2',
-     [status, requestId]
+      'UPDATE "FriendsRequests" SET status = $1, updated_at = NOW() WHERE request_id = $2',
+      [status, requestId]
     );
-    
+
     if (status === 'accepted') {
-      
+
       await pool.query(
         `INSERT INTO "Friends" (user_id, friend_id) VALUES($1, $2)`,
         [userId, senderId]
-      );  
+      );
 
       await pool.query(
         `INSERT INTO "Friends" (user_id, friend_id) VALUES($1, $2)`,
         [senderId, userId]
       );
     }
-    
+
     await pool.query(
       `DELETE FROM "Notifications" WHERE reference_id = $1 and type = $2`,
       [requestId, 'friend_request']
     );
-    
+
     res.json({
       success: true,
     })
-  } catch (error) { 
+  } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
   }
@@ -917,7 +1151,7 @@ router.patch('/api/friendRequests/:requestId/status', authMiddleware, async (req
 
 router.post('/api/personal-chat/get-or-create', authMiddleware, async (req: CustomRequest, res) => {
   try {
-    const {firstUserId, secondUserId} = req.body;
+    const { firstUserId, secondUserId } = req.body;
 
     const result = await pool.query(
       `INSERT INTO "PersonalChats" (user_id_first, user_id_second)

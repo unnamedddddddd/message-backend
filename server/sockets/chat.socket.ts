@@ -34,11 +34,12 @@ const saveMessages = async ({message, userId, chatId, chatType}: SaveMessage) =>
   if (!ENCRYPT_SECRET) {
     throw new Error("ENCRYPT_SECRET is missing");
   }
-
+  
   if (!message) return;
   if (Buffer.isBuffer(message)) return;
 
   const encryptedMessage = encrypt(message, ENCRYPT_SECRET);
+  console.log(chatId, chatType);
   
   try {
     const client: MongoClient = await clientPromise;
@@ -188,11 +189,15 @@ export const socketHandler = (io: Server) => {
       socket.on('user-join-voice', ({roomId}) => {
         socket.join(roomId);
         console.log(`[${new Date().toLocaleString()}] ${socket.userName} вошёл в комнату: ${roomId}`);
+        socket.to(roomId).emit('user-join-voice', {
+          userId: socket.id,
+        });
       });
 
       socket.on('user-left-voice', ({roomId}) => {
-        console.log(socket.userId);
-
+        socket.to(roomId).emit('user-left-voice', {
+          userId: socket.id,
+        });
         socket.leave(roomId);
         console.log(`[${new Date().toLocaleString()}] ${socket.userName} вышел из комнаты: ${roomId}`);
       });
@@ -224,9 +229,7 @@ export const socketHandler = (io: Server) => {
             userId: clientSocket?.userId,
             userName: clientSocket?.userName,
           }
-        }) : []; 
-        console.log(participants);
-        
+        }) : [];         
         socket.emit('voice-chat-participants', participants);
       });
 
