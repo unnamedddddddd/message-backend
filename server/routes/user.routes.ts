@@ -928,6 +928,14 @@ router.post('/api/users/:receivedId/invites', authMiddleware, async (req: Custom
   try {
     const { receivedId } = req.params;
     const userId = req.userId;
+      console.log(receivedId, userId);
+
+    if (Number(receivedId) === userId) {
+      return res.json({
+        success: false,
+        message: 'Нельзя отправить приглашение самому себе'
+      });
+    }
 
     const existingFriendship = await pool.query(
       `SELECT user_id FROM "Friends" 
