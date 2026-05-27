@@ -30,7 +30,7 @@ pool.connect()
 // API РОУТЫ 
 router.post('/api/createUser', async (req, res) => {
   try {
-    const { userLogin, userPassword } = req.body;
+    const { userLogin, userPassword, verifiedEmail } = req.body;
 
     const userCheck = await pool.query(
       'SELECT user_login FROM "Users" WHERE user_login = $1',
@@ -45,10 +45,10 @@ router.post('/api/createUser', async (req, res) => {
       });
     }
     const hashedPassword = await hashPassword(userPassword);
-
+    
     const result = await pool.query(
-      'INSERT INTO "Users" (user_login, user_password) VALUES ($1, $2) RETURNING user_id',
-      [userLogin, hashedPassword]
+      'INSERT INTO "Users" (user_login, user_password, user_email) VALUES ($1, $2, $3) RETURNING user_id',
+      [userLogin, hashedPassword, verifiedEmail]
     );
 
     if (result.rows.length > 0) {
@@ -694,22 +694,9 @@ router.post('/api/users/:userId/avatar', authMiddleware, uploadUser.single('avat
   }
 })
 
-router.post('/api/users/:userId/confirmEmail', authMiddleware, async (req: CustomRequest, res) => {
+router.post('/api/users/confirmEmail', async (req: CustomRequest, res) => {
   try {
-    const userId = req.userId;
     const { userEmail } = req.body;
-
-    const checkUser = await pool.query(
-      'SELECT user_login FROM "Users" WHERE user_id = $1',
-      [userId]
-    );
-
-    if (checkUser.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Пользователь не найден',
-      });
-    }
 
     const checkEmail = await pool.query(
       'SELECT user_id FROM "Users" WHERE user_email = $1',
@@ -723,18 +710,11 @@ router.post('/api/users/:userId/confirmEmail', authMiddleware, async (req: Custo
       });
     }
 
-    await pool.query('DELETE FROM "VerificationCode" WHERE user_id = $1', [userId]);
-
     const verifyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
     await pool.query(
-      'INSERT INTO "VerificationCode" (code_text, user_id) VALUES ($1, $2)',
-      [verifyCode, userId]
-    );
-
-    await pool.query(
-      'UPDATE "Users" SET user_email = $1 WHERE user_id = $2',
-      [userEmail, userId]
+      'INSERT INTO "VerificationCode" (code_text, user_email) VALUES ($1, $2)',
+      [verifyCode, userEmail]
     );
 
     sendVerificationEmail(userEmail, verifyCode);
@@ -750,29 +730,15 @@ router.post('/api/users/:userId/confirmEmail', authMiddleware, async (req: Custo
   }
 });
 
-router.post('/api/users/:userId/confirmCode', authMiddleware, async (req: CustomRequest, res) => {
+router.post('/api/users/confirmCode', async (req: CustomRequest, res) => {
   try {
-    const userId = req.userId;
-    const { userCode } = req.body;
-
-    const result = await pool.query(
-      'SELECT user_login, user_avatar FROM "Users" WHERE user_id = $1',
-      [userId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Пользователь не найден',
-      });
-    }
+    const { userCode, userEmail } = req.body;
 
     const checkCode = await pool.query(
-      'SELECT code_text FROM "VerificationCode" WHERE user_id = $1',
-      [userId]
+      'SELECT code_text FROM "VerificationCode" WHERE user_email = $1',
+      [userEmail]
     );
-
-
+    
     if (checkCode.rows[0].code_text !== userCode) {
       return res.json({
         success: false,
@@ -780,12 +746,7 @@ router.post('/api/users/:userId/confirmCode', authMiddleware, async (req: Custom
       });
     }
 
-    await pool.query(
-      'UPDATE "Users" SET is_verified = true WHERE user_id = $1',
-      [userId]
-    )
-
-    await pool.query('DELETE FROM "VerificationCode" WHERE user_id = $1', [userId]);
+    await pool.query('DELETE FROM "VerificationCode" WHERE user_email = $1', [userEmail]);
 
     return res.json({
       success: true,
