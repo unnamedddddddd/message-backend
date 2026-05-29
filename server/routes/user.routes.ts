@@ -45,7 +45,7 @@ router.post('/api/createUser', async (req, res) => {
       });
     }
     const hashedPassword = await hashPassword(userPassword);
-    
+
     const result = await pool.query(
       'INSERT INTO "Users" (user_login, user_password, user_email) VALUES ($1, $2, $3) RETURNING user_id',
       [userLogin, hashedPassword, verifiedEmail]
@@ -212,8 +212,7 @@ router.patch('/api/user/profile', authMiddleware, async (req: CustomRequest, res
         message: 'Пользователь не найден',
       });
     }
-    console.log(userDetails);
-    
+
     await pool.query(
       `INSERT INTO "Profiles" (user_id, github_href, telegram_href, about_me, status, updated_at)
     VALUES ($1, $2, $3, $4, $5, NOW())
@@ -281,13 +280,13 @@ router.post('/api/logout', (req, res) => {
 
 router.post('/api/forgotPassword', async (req, res) => {
   try {
-    const { userLogin, newUserPassword } = req.body;
-
+    const { userId, newUserPassword } = req.body;
+    
     const userCheck = await pool.query(
-      'SELECT user_id FROM "Users" WHERE user_login = $1',
-      [userLogin]
+      'SELECT user_id FROM "Users" WHERE user_id = $1',
+      [userId]
     );
-
+    
     if (userCheck.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -296,10 +295,9 @@ router.post('/api/forgotPassword', async (req, res) => {
     }
 
     const hashedPassword = await hashPassword(newUserPassword);
-
     await pool.query(
-      'UPDATE "Users" SET user_password = $1 WHERE user_login = $2',
-      [hashedPassword, userLogin]
+      'UPDATE "Users" SET user_password = $1 WHERE user_id = $2',
+      [hashedPassword, userId]
     );
 
     return res.status(200).json({
@@ -355,7 +353,6 @@ router.get('/api/servers/find', authMiddleware, async (req: CustomRequest, res) 
       `SELECT server_id, server_name, server_avatar FROM "Servers" WHERE server_name ILIKE $1 || '%' `,
       [search]
     )
-    console.log(servers.rows);
 
     if (servers.rows.length === 0) {
       return res.status(404).json({
@@ -644,7 +641,7 @@ router.patch('/api/user/profile', authMiddleware, async (req: CustomRequest, res
         message: 'Пользователь не найден',
       });
     }
-    
+
     await pool.query(
       `INSERT INTO "Profiles" (user_id, github_href, telegram_href, about_me, status, updated_at)
        VALUES ($1, $2, $3, $4, $5, NOW())
@@ -738,7 +735,7 @@ router.post('/api/users/confirmCode', async (req: CustomRequest, res) => {
       'SELECT code_text FROM "VerificationCode" WHERE user_email = $1',
       [userEmail]
     );
-    
+
     if (checkCode.rows[0].code_text !== userCode) {
       return res.json({
         success: false,
@@ -751,6 +748,76 @@ router.post('/api/users/confirmCode', async (req: CustomRequest, res) => {
     return res.json({
       success: true,
       message: 'Почта потверждена',
+    });
+  } catch (error) {
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+});
+
+router.post('/api/auth/send-reset-code', async (req: CustomRequest, res) => {
+  try {
+    const { userEmail } = req.body;
+
+    const checkEmail = await pool.query(
+      'SELECT user_id FROM "Users" WHERE user_email = $1',
+      [userEmail]
+    );
+    
+    if (checkEmail.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Почта не привязана',
+      });
+    }
+
+    const verifyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    await pool.query(
+      'INSERT INTO "VerificationCode" (code_text, user_email) VALUES ($1, $2)',
+      [verifyCode, userEmail]
+    );
+
+    sendVerificationEmail(userEmail, verifyCode);
+
+    res.json({
+      success: true,
+      message: 'Код потверждения отправлен',
+    });
+  } catch (error) {
+    console.error(error);
+    handleDatabaseError(error, res);
+  }
+});
+
+router.post('/api/auth/verify-reset-code', async (req: CustomRequest, res) => {
+  try {
+    const { userCode } = req.body;
+    const { userEmail } = req.body;
+
+    const checkEmail = await pool.query(
+      'SELECT user_id FROM "Users" WHERE user_email = $1',
+      [userEmail]
+    );
+
+    const checkCode = await pool.query(
+      'SELECT code_text FROM "VerificationCode" WHERE user_email = $1',
+      [userEmail]
+    );
+
+    if (checkCode.rows[0].code_text !== userCode) {
+      return res.json({
+        success: false,
+        message: 'Код потверждения не корректный',
+      });
+    }
+
+    await pool.query('DELETE FROM "VerificationCode" WHERE user_email = $1', [userEmail]);
+
+    return res.json({
+      success: true,
+      message: 'Почта потверждена',
+      userId: checkEmail.rows[0].user_id,
     });
   } catch (error) {
     console.error(error);
@@ -928,7 +995,6 @@ router.post('/api/users/:receivedId/invites', authMiddleware, async (req: Custom
   try {
     const { receivedId } = req.params;
     const userId = req.userId;
-      console.log(receivedId, userId);
 
     if (Number(receivedId) === userId) {
       return res.json({
@@ -1022,7 +1088,6 @@ router.get('/api/notifications', authMiddleware, async (req: CustomRequest, res)
       ORDER BY n.created_at DESC`,
       [userId]
     );
-    console.log(notifications.rows[0]);
 
     res.json({
       success: true,
