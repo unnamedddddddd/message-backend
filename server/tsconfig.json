@@ -11,9 +11,9 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
   "include": ["./**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
+
