@@ -1,14 +1,14 @@
 import { Router } from 'express';
-import { comparePassword, hashPassword } from '../scripts/hashPassword.ts';
-import { authMiddleware, authRememberMiddleware, generateToken, generateTokenRemember } from '../scripts/jwtTools.ts';
-import { pool } from '../configs/db.config.ts';
-import { CustomRequest } from '../types/CustomRequest.ts';
-import { uploadServer, uploadUser } from '../configs/multer.config.ts';
+import { comparePassword, hashPassword } from '../scripts/hashPassword';
+import { authMiddleware, authRememberMiddleware, generateToken, generateTokenRemember } from '../scripts/jwtTools';
+import { pool } from '../configs/db.config';
+import { CustomRequest } from '../types/CustomRequest';
+import { uploadServer, uploadUser } from '../configs/multer.config';
 import fs from 'fs';
-import DEFAULT_USER_AVATAR from '../configs/userAvatar.ts';
-import { sendVerificationEmail } from '../configs/mailer.config.ts';
-import { decrypt } from '../scripts/encryptionMessages.ts';
-import { clientPromise } from '../configs/mongodb.config.ts';
+import DEFAULT_USER_AVATAR from '../configs/userAvatar';
+import { sendVerificationEmail } from '../configs/mailer.config';
+import { decrypt } from '../scripts/encryptionMessages';
+import { clientPromise } from '../configs/mongodb.config';
 import { MongoClient } from 'mongodb';
 import { count } from 'console';
 

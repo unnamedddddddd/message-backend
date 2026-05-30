@@ -3,9 +3,9 @@ dotenv.config();
 
 import jwt from 'jsonwebtoken';
 import type { Response, NextFunction } from 'express';
-import type { CustomRequest } from '../types/CustomRequest.ts';
-import type { JWTError } from '../types/jwtError.ts';
-import type { DecodedToken } from '../types/DecodedToken.ts';
+import type { CustomRequest } from '../types/CustomRequest';
+import type { JWTError } from '../types/jwtError';
+import type { DecodedToken } from '../types/DecodedToken';
 
 const JWT_SECRET = process.env.JWT_SECRET; // СДЕЛАТЬ proccess.env ПРИ ДЕПЛОЕ
 const JWT_SECRET_REMEMBER = process.env.JWT_SECRET_REMEMBER; // СДЕЛАТЬ proccess.env ПРИ ДЕПЛОЕ

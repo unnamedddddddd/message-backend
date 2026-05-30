@@ -3,10 +3,10 @@ import { Server } from 'socket.io';
 import { createServer } from 'http';
 import express from 'express';
 import cookieParser from 'cookie-parser';
-import { socketHandler } from './sockets/chat.socket.ts';
-import { corsExpress, corsOptions } from './configs/cors.config.ts';
+import { socketHandler } from './sockets/chat.socket';
+import { corsExpress, corsOptions } from './configs/cors.config';
 import path from 'path';
-import userRoutes from './routes/user.routes.ts'; 
+import userRoutes from './routes/user.routes'; 
 
 dotenv.config();
 

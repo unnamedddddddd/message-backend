@@ -1,11 +1,11 @@
 import { Server, Socket } from "socket.io";
-import { verifyToken } from "../scripts/jwtTools.ts";
-import { pool } from "../configs/db.config.ts";
-import SaveMessage from "../types/SaveMessageProps.ts";
-import { redis } from "../configs/redis.config.ts";
-import { encrypt } from "../scripts/encryptionMessages.ts";
+import { verifyToken } from "../scripts/jwtTools";
+import { pool } from "../configs/db.config";
+import SaveMessage from "../types/SaveMessageProps";
+import { redis } from "../configs/redis.config";
+import { encrypt } from "../scripts/encryptionMessages";
 import { MongoClient } from "mongodb";
-import { clientPromise } from "../configs/mongodb.config.ts";
+import { clientPromise } from "../configs/mongodb.config";
 
 interface ExtendedSocket extends Socket {
   userId: number | string;
