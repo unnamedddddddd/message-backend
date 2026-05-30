@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "start": "cd server && ts-node server.ts",
+    "dev": "cd server && ts-node server.ts"
+  }
+}
