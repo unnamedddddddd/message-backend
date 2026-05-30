@@ -32,9 +32,9 @@
     "undici-types": "^7.16.0",
     "ws": "^8.19.0"
   },
-   "scripts": {
-    "build": "tsc -p server/",
-    "start": "node dist/index.js"
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js"
   },
   "keywords": [],
   "author": "",
