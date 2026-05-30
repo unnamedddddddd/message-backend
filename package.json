@@ -1,12 +1,6 @@
 {
-  "name": "message-backend",
-  "version": "1.0.0",
   "scripts": {
-    "build": "tsc -p server/",
+    "build": "tsc -p server/tsconfig.json",
     "start": "node dist/server.js"
-  },
-  "devDependencies": {
-    "typescript": "^5.0.0",
-    "@types/node": "^20.0.0"
   }
 }
