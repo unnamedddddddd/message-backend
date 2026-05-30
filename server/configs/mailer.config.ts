@@ -6,12 +6,14 @@ dns.setDefaultResultOrder('ipv4first');
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 587,
-  secure: false, // важно!
+  secure: false,
   requireTLS: true,
   auth: {
     user: 'deniskamaldinov85@gmail.com',
     pass: process.env.MAILER_PASSWORD
-  }
+  },
+  logger: true,
+  debug: true
 });
 
 export const sendVerificationEmail = async (to: string, code: string) => {
