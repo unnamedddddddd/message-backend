@@ -4,32 +4,33 @@ import dns from 'dns';
 dns.setDefaultResultOrder('ipv4first');
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
   host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
+  port: 587,
+  secure: false, // важно!
+  requireTLS: true,
   auth: {
     user: 'deniskamaldinov85@gmail.com',
     pass: process.env.MAILER_PASSWORD
   }
 });
 
-export const sendVerificationEmail  = async(to: string, code: string) => {
+export const sendVerificationEmail = async (to: string, code: string) => {
   try {
-    await transporter.sendMail({
-      from:  '"Messanger-Denis" deniskamaldinov85@gmail.com',
+    const info = await transporter.sendMail({
+      from: '"Messanger-Denis" <deniskamaldinov85@gmail.com>',
       to,
       subject: 'Код подтверждения Messanger',
       html: `
         <div style="font-family: sans-serif; text-align: center;">
-          <h2>Добро пожаловать в Messanger-Denis</h2> 
+          <h2>Добро пожаловать в Messanger-Denis</h2>
           <p>Твой код активации:</p>
           <h1 style="color: #898b8f; letter-spacing: 5px;">${code}</h1>
           <p>Код действует 10 минут.</p>
-        </div>`,
+        </div>`
     });
-    console.log('Письмо успешно отправлено на', to);
+
+    console.log('📧 Письмо отправлено:', info.messageId);
   } catch (error) {
-    console.error('Ошибка Nodemailer:', error);
+    console.error('❌ Ошибка Nodemailer:', error);
   }
-}
+};
