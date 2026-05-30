@@ -1,31 +1,16 @@
 import nodemailer from 'nodemailer';
-import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import dns from 'dns';
 
 dns.setDefaultResultOrder('ipv4first');
-process.env.NODE_OPTIONS = '--dns-result-order=ipv4first';
-
-if (!process.env.MAILER_PASSWORD) {
-  console.error('❌ MAILER_PASSWORD is missing!');
-}
 
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 587,
   secure: false,
   requireTLS: true,
-  family: 4,
   auth: {
-    user: 'deniskamaldinov85@gmail.com',
+    user: process.env.GMAIL_USER,
     pass: process.env.MAILER_PASSWORD
-  }
-} as SMTPTransport.Options);
-
-transporter.verify((error, success) => {
-  if (error) {
-    console.error('SMTP VERIFY FAILED:', error);
-  } else {
-    console.log('SMTP READY');
   }
 });
 
