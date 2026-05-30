@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "build": "tsc -p server/tsconfig.json",
+    "build": "tsc",
     "start": "node dist/server.js"
   }
 }
