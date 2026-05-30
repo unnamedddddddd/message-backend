@@ -5,8 +5,8 @@ import { Pool } from 'pg';
 
 export const pool = new Pool({
   host: process.env.DB_HOST,
-  port: 5432,
-  database: 'MessangerDB',
+  port: Number(process.env.PGPORT),
+  database: process.env.PGDATABASE,
   user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
+  password: process.env.PGPASSWORD,
 });
