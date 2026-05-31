@@ -89,9 +89,9 @@ router.post('/api/login', async (req, res) => {
 
         res.cookie('remember_token', tokenRemember, {
           httpOnly: true,
-          secure: false, // ПРИ ДЕПЛОЕ ПОМЕНЯТЬ НА true
-          sameSite: 'lax',// ПРИ ДЕПЛОЕ ПОМЕНЯТЬ НА strict
-          maxAge: 360 * 60 * 60 * 1000, // 360 часов
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+          secure: process.env.NODE_ENV === 'production',
+          maxAge: 360 * 60 * 60 * 1000, 
           path: '/'
         })
       }
@@ -99,9 +99,9 @@ router.post('/api/login', async (req, res) => {
 
       res.cookie('auth_token', token, {
         httpOnly: true,
-        secure: false, // ПРИ ДЕПЛОЕ ПОМЕНЯТЬ НА true
-        sameSite: 'lax',// ПРИ ДЕПЛОЕ ПОМЕНЯТЬ НА strict
-        maxAge: 24 * 60 * 60 * 1000, // 24 часа
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 24 * 60 * 60 * 1000,
         path: '/'
       })
 
@@ -267,17 +267,6 @@ router.get('/api/user/profile', authMiddleware, async (req: CustomRequest, res) 
   }
 })
 
-router.post('/api/logout', (req, res) => {
-  res.clearCookie('auth_token', {
-    path: '/',
-  });
-
-  res.status(200).json({
-    success: true,
-    message: 'Выход выполнен успешно',
-  });
-});
-
 router.post('/api/forgotPassword', async (req, res) => {
   try {
     const { userId, newUserPassword } = req.body;
@@ -424,7 +413,7 @@ router.get('/api/servers/:serverId/chats', authMiddleware, async (req: CustomReq
   }
 });
 
-router.get('/api/chats/:chatType/:chatId/messages', async (req, res) => {
+router.get('/api/chats/:chatType/:chatId/messages', authMiddleware, async (req, res) => {
   try {
     const ENCRYPT_SECRET = process.env.ENCRYPT_SECRET;
 
@@ -799,6 +788,13 @@ router.post('/api/auth/verify-reset-code', async (req: CustomRequest, res) => {
       'SELECT user_id FROM "Users" WHERE user_email = $1',
       [userEmail]
     );
+
+    if (checkEmail.rows.length === 0) {
+      return res.json({
+        success: false,
+        message: 'Пользователь не найден',
+      });
+    }
 
     const checkCode = await pool.query(
       'SELECT code_text FROM "VerificationCode" WHERE user_email = $1',

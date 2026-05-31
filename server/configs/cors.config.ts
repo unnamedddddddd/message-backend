@@ -1,7 +1,8 @@
 //ДЛЯ SOCKET
 const allowedOrigins = [
   'http://localhost:5173',
-  'https://message-frontend-u24g.onrender.com'
+  'https://message-frontend-kappa.vercel.app',
+  'https://message-backend-production-989b.up.railway.app'
 ];
 
 export const corsOptions = {

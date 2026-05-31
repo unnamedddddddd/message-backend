@@ -21,7 +21,6 @@ app.use(corsExpress);
 const io = new Server(httpServer, {
   cors: corsOptions
 })
-console.log('MAILER_PASSWORD:', process.env.MAILER_PASSWORD);
 app.use(userRoutes); 
 socketHandler(io);   
 
