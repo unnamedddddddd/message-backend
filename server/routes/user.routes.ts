@@ -6,7 +6,7 @@ import { CustomRequest } from '../types/CustomRequest';
 import { uploadServer, uploadUser } from '../configs/multer.config';
 import fs from 'fs';
 import DEFAULT_USER_AVATAR from '../configs/userAvatar';
-import { sendVerificationEmail } from '../configs/mailer.config';
+import { sendVerificationEmail } from '../configs/resend.config';
 import { decrypt } from '../scripts/encryptionMessages';
 import { clientPromise } from '../configs/mongodb.config';
 import { MongoClient } from 'mongodb';
