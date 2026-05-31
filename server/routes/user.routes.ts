@@ -151,8 +151,8 @@ router.post('/api/verificationTokenRemember', authRememberMiddleware, async (req
 
     res.cookie('auth_token', token, {
       httpOnly: true,
-      secure: false, // ПРИ ДЕПЛОЕ ПОМЕНЯТЬ НА true
-      sameSite: 'lax',// ПРИ ДЕПЛОЕ ПОМЕНЯТЬ НА strict
+      secure: true,       
+      sameSite: 'none',   
       maxAge: 24 * 60 * 60 * 1000,
       path: '/',
     });
