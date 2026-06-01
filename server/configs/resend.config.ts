@@ -7,17 +7,32 @@ export const sendVerificationEmail = async (
   code: string
 ) => {
   try {
-   const info = await resend.emails.send({
-      from: '"Messanger-Denis" <noreply@messanger.dpdns.org>',
+    const info = await resend.emails.send({
+      from: '"Droksid" <noreply@messanger.dpdns.org>',
       to,
       subject: 'Код подтверждения Messanger',
       html: `
-        <div style="font-family: sans-serif; text-align: center;">
-          <h2>Добро пожаловать в Messanger-Denis</h2>
-          <p>Твой код активации:</p>
-          <h1 style="color: #898b8f; letter-spacing: 5px;">${code}</h1>
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
+          <h2>Подтверждение регистрации</h2>
+
+          <p>Здравствуйте!</p>
+
+          <p>Вы запросили код подтверждения для аккаунта в Messanger.</p>
+
+          <p>Ваш код:</p>
+
+          <h1>${code}</h1>
+
           <p>Код действует 10 минут.</p>
-        </div>`
+
+          <p>Если вы не запрашивали этот код, просто проигнорируйте это письмо.</p>
+
+          <hr />
+
+          <p>Droksid Team</p>
+          <p>support@messanger.dpdns.org</p>
+        </div>
+      ` 
     });
 
     console.log('📧 Письмо отправлено:', info.data, to);
