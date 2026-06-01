@@ -63,7 +63,7 @@ export const authMiddleware = (req: CustomRequest, res: Response, next: NextFunc
     }
     const token = req.cookies?.auth_token;
     
-    if (!token) {
+    if (!token) {      
       return res.status(401).json({
         success: false, 
         message: 'Токен авторизации не предоставлен'
