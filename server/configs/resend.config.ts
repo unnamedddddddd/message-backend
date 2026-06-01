@@ -8,7 +8,7 @@ export const sendVerificationEmail = async (
 ) => {
   try {
     const info = await resend.emails.send({
-      from: '"Droksid" <noreply@messanger.dpdns.org>',
+      from: '"Droksid" <support@messanger.dpdns.org>',
       to,
       subject: 'Код подтверждения Messanger',
       html: `
