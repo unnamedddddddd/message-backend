@@ -10,13 +10,13 @@ import { sendVerificationEmail } from '../configs/resend.config';
 import { decrypt } from '../scripts/encryptionMessages';
 import { clientPromise } from '../configs/mongodb.config';
 import { MongoClient } from 'mongodb';
-import { count } from 'console';
+import { v2 as cloudinary } from 'cloudinary';
 
 const router = Router();
 
 const handleDatabaseError = (error: any, res: any) => {
   console.error('Ошибка БД:', error);
-  res.status(500).json({
+  res.status(500).json({  
     success: false,
     message: 'Внутренняя ошибка сервера'
   });
@@ -654,8 +654,8 @@ router.patch('/api/user/profile', authMiddleware, async (req: CustomRequest, res
   }
 });
 
-router.post('/api/users/:userId/avatar', authMiddleware, uploadUser.single('avatar'), async (req: CustomRequest, res) => {
-  try {
+router.post('/api/users/:userId/avatar', authMiddleware, uploadUser.single('avatar'), async (req: CustomRequest, res) => {    
+  try {    
     if (!req.file) return res.status(400).json({ error: 'Файл не пришел' });
     const userId = req.userId;
 
@@ -663,22 +663,26 @@ router.post('/api/users/:userId/avatar', authMiddleware, uploadUser.single('avat
       'SELECT user_avatar FROM "Users" WHERE user_id = $1',
       [userId]
     );
-    if (prevAvatarPath.rows[0].user_avatar !== 0 && prevAvatarPath.rows[0].user_avatar !== DEFAULT_USER_AVATAR) {
-      fs.rmSync(`./${prevAvatarPath.rows[0].user_avatar}`);
+
+    const prevAvatar = prevAvatarPath.rows[0].user_avatar;
+    if (prevAvatar && prevAvatar !== DEFAULT_USER_AVATAR) {
+      const publicId = prevAvatar.split('/').slice(-2).join('/').split('.')[0];
+      await cloudinary.uploader.destroy(publicId);
     }
 
-    const pathAvatar = `/uploads/UsersAvatars/${req.file.filename}`;
+    const pathAvatar = req.file.path;
 
     await pool.query(
       'UPDATE "Users" SET user_avatar = $1 WHERE user_id = $2',
       [pathAvatar, userId]
-    )
+    );
+
     res.json({ success: true, avatar: pathAvatar });
   } catch (error) {
     console.error(error);
     handleDatabaseError(error, res);
   }
-})
+});
 
 router.post('/api/users/confirmEmail', async (req: CustomRequest, res) => {
   try {
@@ -821,20 +825,22 @@ router.post('/api/auth/verify-reset-code', async (req: CustomRequest, res) => {
   }
 });
 
-router.post('/api/servers/createServer', uploadServer.single('avatar'), async (req, res) => {
+router.post('/api/servers/createServer', authMiddleware, uploadServer.single('avatar'), async (req, res) => {
+
   try {
     if (!req.file) return res.status(400).json({ error: 'Файл не пришел' });
     const { user_id, server_name } = req.body;
-    const pathAvatar = `/uploads/ServersAvatars/${req.file.filename}`;
+    
+    const pathAvatar = req.file.path;
 
     const resultServer = await pool.query(
       'INSERT INTO "Servers" (server_name, server_avatar, admin_id) VALUES($1, $2, $3) RETURNING server_id',
       [server_name, pathAvatar, user_id]
-    )
+    );
     await pool.query(
       'INSERT INTO "Subscriptions" (server_id, user_id) VALUES($1, $2)',
       [resultServer.rows[0].server_id, user_id]
-    )
+    );
 
     res.json({
       success: true,
@@ -844,7 +850,7 @@ router.post('/api/servers/createServer', uploadServer.single('avatar'), async (r
     console.error(error);
     handleDatabaseError(error, res);
   }
-})
+});
 
 router.post('/api/servers/:serverId/chats/:chatName', authMiddleware, async (req, res) => {
   try {

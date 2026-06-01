@@ -1,55 +1,28 @@
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 
-const uploadDirUser = 'uploads/UsersAvatars/';
-if (!fs.existsSync(uploadDirUser)) {
-  fs.mkdirSync(uploadDirUser, {recursive: true});
-}
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
-const uploadDirServer = 'uploads/ServersAvatars/';
-if (!fs.existsSync(uploadDirServer)) {
-  fs.mkdirSync(uploadDirServer, {recursive: true});
-}
+const userAvatarStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'users-avatars',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+  } as any,
+});
 
-// ХРАНИЛИЩЕ 
-const storageUser = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDirUser);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  },
-})
+const serverAvatarStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'servers-avatars',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+  } as any,
+});
 
-const storageServer = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDirServer);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  },
-})
-
-// ФИЛЬТР ФАЙЛОВ
-const fileFilter = (req: any, file: any, cb: any) => {
-  if (file.mimetype.startsWith('image/')) {
-    cb(null, true);
-  } else {
-    cb(new Error('Разрешены только изображения'), false);
-  }
-}
-// САМ КОНФИГ multer'a
-export const uploadUser = multer({
-  storage: storageUser,
-  fileFilter: fileFilter,
-  limits: {fileSize: 5 * 1024 * 1024}
-})
-
-export const uploadServer = multer({
-  storage: storageServer,
-  fileFilter: fileFilter,
-  limits: {fileSize: 5 * 1024 * 1024}
-})
+export const uploadUser = multer({ storage: userAvatarStorage });
+export const uploadServer = multer({ storage: serverAvatarStorage });
