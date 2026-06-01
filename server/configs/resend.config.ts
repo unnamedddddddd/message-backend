@@ -8,7 +8,7 @@ export const sendVerificationEmail = async (
 ) => {
   try {
    const info = await resend.emails.send({
-      from: '"Messanger-Denis" <support@messanger.dpdns.org>',
+      from: '"Messanger-Denis" <noreply@messanger.dpdns.org>',
       to,
       subject: 'Код подтверждения Messanger',
       html: `
@@ -20,7 +20,7 @@ export const sendVerificationEmail = async (
         </div>`
     });
 
-    console.log('📧 Письмо отправлено:', info);
+    console.log('📧 Письмо отправлено:', info.data, to);
 
   } catch (error) {
     console.error('Ошибка отправки:', error);
