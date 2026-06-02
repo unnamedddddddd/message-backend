@@ -35,7 +35,7 @@ export const sendVerificationEmail = async (
       ` 
     });
 
-    console.log('📧 Письмо отправлено:', info.data, to);
+    console.log(`📧 Письмо отправлено: ${info.data} 'на' ${to}`);
 
   } catch (error) {
     console.error('Ошибка отправки:', error);

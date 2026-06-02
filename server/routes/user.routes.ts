@@ -16,7 +16,7 @@ const router = Router();
 
 const handleDatabaseError = (error: any, res: any) => {
   console.error('Ошибка БД:', error);
-  res.status(500).json({  
+  res.status(500).json({
     success: false,
     message: 'Внутренняя ошибка сервера'
   });
@@ -91,7 +91,7 @@ router.post('/api/login', async (req, res) => {
           httpOnly: true,
           sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
           secure: process.env.NODE_ENV === 'production',
-          maxAge: 360 * 60 * 60 * 1000, 
+          maxAge: 360 * 60 * 60 * 1000,
           path: '/'
         })
       }
@@ -119,8 +119,19 @@ router.post('/api/login', async (req, res) => {
 
 router.post('/api/logout', async (req, res) => {
   try {
-    res.clearCookie('auth_token');
-    res.clearCookie('remember_token');
+    res.clearCookie('auth_token', {
+      httpOnly: true,
+      sameSite: 'none',
+      secure: true,
+      path: '/',
+    });
+
+    res.clearCookie('remember_token', {
+      httpOnly: true,
+      sameSite: 'none',
+      secure: true,
+      path: '/',
+    });
 
     res.status(200).json({
       success: true,
@@ -151,8 +162,8 @@ router.post('/api/verificationTokenRemember', authRememberMiddleware, async (req
 
     res.cookie('auth_token', token, {
       httpOnly: true,
-      secure: true,       
-      sameSite: 'none',   
+      secure: true,
+      sameSite: 'none',
       maxAge: 24 * 60 * 60 * 1000,
       path: '/',
     });
@@ -270,12 +281,12 @@ router.get('/api/user/profile', authMiddleware, async (req: CustomRequest, res) 
 router.post('/api/forgotPassword', async (req, res) => {
   try {
     const { userId, newUserPassword } = req.body;
-    
+
     const userCheck = await pool.query(
       'SELECT user_id FROM "Users" WHERE user_id = $1',
       [userId]
     );
-    
+
     if (userCheck.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -654,8 +665,8 @@ router.patch('/api/user/profile', authMiddleware, async (req: CustomRequest, res
   }
 });
 
-router.post('/api/users/:userId/avatar', authMiddleware, uploadUser.single('avatar'), async (req: CustomRequest, res) => {    
-  try {    
+router.post('/api/users/:userId/avatar', authMiddleware, uploadUser.single('avatar'), async (req: CustomRequest, res) => {
+  try {
     if (!req.file) return res.status(400).json({ error: 'Файл не пришел' });
     const userId = req.userId;
 
@@ -756,7 +767,7 @@ router.post('/api/auth/send-reset-code', async (req: CustomRequest, res) => {
       'SELECT user_id FROM "Users" WHERE user_email = $1',
       [userEmail]
     );
-    
+
     if (checkEmail.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -830,7 +841,7 @@ router.post('/api/servers/createServer', authMiddleware, uploadServer.single('av
   try {
     if (!req.file) return res.status(400).json({ error: 'Файл не пришел' });
     const { user_id, server_name } = req.body;
-    
+
     const pathAvatar = req.file.path;
 
     const resultServer = await pool.query(
